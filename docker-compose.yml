@@ -1,0 +1,60 @@
+# ============================================
+# SecureVault - Development Infrastructure
+# ============================================
+# Usage: docker-compose up -d
+# This starts MongoDB, Redis, and HashiCorp Vault for local development.
+
+services:
+  # ─── MongoDB ──────────────────────────────────
+  mongodb:
+    image: mongo:7
+    container_name: securevault-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: securevault_user
+      MONGO_INITDB_ROOT_PASSWORD: securevault_pass_dev
+      MONGO_INITDB_DATABASE: securevault
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - securevault-net
+
+  # ─── Redis ────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: securevault-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass securevault_redis_dev
+    volumes:
+      - redis_data:/data
+    networks:
+      - securevault-net
+
+  # ─── HashiCorp Vault ──────────────────────────
+  vault:
+    image: hashicorp/vault:1.15
+    container_name: securevault-vault
+    restart: unless-stopped
+    ports:
+      - "8200:8200"
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: dev-root-token
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    cap_add:
+      - IPC_LOCK
+    networks:
+      - securevault-net
+
+volumes:
+  mongodb_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  securevault-net:
+    driver: bridge
