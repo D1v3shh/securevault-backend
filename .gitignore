@@ -1,6 +1,5 @@
 # Dependencies
 node_modules/
-package-lock.json
 
 # Build
 dist/
@@ -11,9 +10,18 @@ build/
 .env.local
 .env.production
 
-# Storage
-storage/
-logs/
+# Storage — ignore contents but keep directory structure
+storage/*
+!storage/uploads/
+storage/uploads/*
+!storage/uploads/.gitkeep
+!storage/temp/
+storage/temp/*
+!storage/temp/.gitkeep
+
+# Logs — ignore contents but keep directory structure
+logs/*
+!logs/.gitkeep
 
 # IDE
 .vscode/
