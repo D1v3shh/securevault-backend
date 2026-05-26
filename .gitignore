@@ -41,3 +41,4 @@ docker-data/
 vault-data/
 mongo-data/
 redis-data/
+docker-compose.yml
