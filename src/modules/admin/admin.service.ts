@@ -3,11 +3,14 @@ import {
 } from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { AuditService } from '../audit/audit.service';
+import { SetupService } from '../setup/setup.service';
+import { DevicesService } from '../devices/devices.service';
 import { AuditAction } from '../audit/interfaces/audit.interface';
 import { AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import { UpdateUserDto } from '../users/dto/update-user.dto';
 import { QueryUsersDto } from '../users/dto/query-users.dto';
+import { CreateEnrollmentTokenDto } from './dto/admin.dto';
 import { Role, ROLE_HIERARCHY } from '../permissions/constants/roles.enum';
 
 @Injectable()
@@ -17,7 +20,11 @@ export class AdminService {
   constructor(
     private readonly usersService: UsersService,
     private readonly auditService: AuditService,
+    private readonly setupService: SetupService,
+    private readonly devicesService: DevicesService,
   ) {}
+
+  // ─── User Management ──────────────────────────────────
 
   /**
    * Create a new user account.
@@ -173,9 +180,42 @@ export class AdminService {
     return user;
   }
 
+  // ─── Enrollment Token Management ──────────────────────
+
+  /**
+   * Create an enrollment token for device onboarding.
+   */
+  async createEnrollmentToken(
+    dto: CreateEnrollmentTokenDto,
+    admin: AuthenticatedUser,
+    ip: string,
+  ) {
+    return this.setupService.createEnrollmentToken({
+      userId: dto.userId,
+      employeeId: dto.employeeId,
+      expiresInHours: dto.expiresInHours,
+      maxDevices: dto.maxDevices,
+      createdBy: admin.userId,
+      ipAddress: ip,
+    });
+  }
+
+  // ─── Device Management ────────────────────────────────
+
+  /**
+   * List all registered devices with filters.
+   */
+  async getDevices(query: any) {
+    return this.devicesService.findAll(query);
+  }
+
+  // ─── Audit Logs ───────────────────────────────────────
+
   async getAuditLogs(query: any) {
     return this.auditService.findAll(query);
   }
+
+  // ─── Private Helpers ──────────────────────────────────
 
   /**
    * Validates that the admin has sufficient privileges for the target role.

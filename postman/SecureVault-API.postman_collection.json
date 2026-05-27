@@ -1,0 +1,324 @@
+{
+  "info": {
+    "name": "SecureVault API",
+    "description": "Complete API collection for SecureVault backend.\nIncludes: Setup, Auth, Certificates, Devices, Admin endpoints.",
+    "version": "2.0.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:3000/api/v1" },
+    { "key": "access_token", "value": "" },
+    { "key": "refresh_token", "value": "" },
+    { "key": "enrollment_token", "value": "" },
+    { "key": "certificate_serial", "value": "" },
+    { "key": "device_id", "value": "" },
+    { "key": "user_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Auth — Login",
+      "item": [
+        {
+          "name": "Login (Admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.data && res.data.accessToken) {",
+                  "  pm.collectionVariables.set('access_token', res.data.accessToken);",
+                  "  pm.collectionVariables.set('refresh_token', res.data.refreshToken);",
+                  "  pm.collectionVariables.set('user_id', res.data.user.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/login",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"kumavatdivesh671@gmail.com\",\n  \"password\": \"DiKu@671\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/refresh",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refresh_token}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Certificate Login",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/certificate-login",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"certificate\": \"-----BEGIN CERTIFICATE-----\\nMIIC...\\n-----END CERTIFICATE-----\",\n  \"deviceFingerprint\": \"abc123def456...\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/logout",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refresh_token}}\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Admin — User Management",
+      "item": [
+        {
+          "name": "Create User",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/admin/create-user",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"john.doe@company.com\",\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"role\": \"EMPLOYEE\",\n  \"department\": \"Engineering\",\n  \"jobTitle\": \"Software Engineer\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Create Enrollment Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.data && res.data.token) {",
+                  "  pm.collectionVariables.set('enrollment_token', res.data.token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/admin/create-enrollment-token",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"employeeId\": \"EMP-001\",\n  \"expiresInHours\": 24,\n  \"maxDevices\": 1\n}"
+            }
+          }
+        },
+        {
+          "name": "List Users",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/admin/users?page=1&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "users"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Devices",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/admin/devices"
+          }
+        },
+        {
+          "name": "Audit Logs",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/admin/audit-logs?page=1&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "audit-logs"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Setup — Device Enrollment",
+      "item": [
+        {
+          "name": "Verify Token",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/setup/verify-token",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{enrollment_token}}\",\n  \"employeeId\": \"EMP-001\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Enroll Device",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.data) {",
+                  "  pm.collectionVariables.set('certificate_serial', res.data.serialNumber || '');",
+                  "  pm.collectionVariables.set('device_id', res.data.deviceId || '');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/setup/enroll",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enrollmentToken\": \"{{enrollment_token}}\",\n  \"employeeId\": \"EMP-001\",\n  \"csr\": \"-----BEGIN CERTIFICATE REQUEST-----\\nMIICYjCCAUoCAQAwHTEbMBkGA1UEAxMSRU1QLTAwMS5zZWN1cmV2YXVsdDAeFw0y\\nMzAxMDEwMDAwMDBaFw0yNDAxMDEwMDAwMDBaMB0xGzAZBgNVBAMTEkVNUC0wMDEu\\nc2VjdXJldmF1bHQwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQC7o5ft\\n-----END CERTIFICATE REQUEST-----\",\n  \"deviceFingerprint\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\n  \"hostname\": \"WORKSTATION-001\",\n  \"platform\": \"win32\",\n  \"arch\": \"x64\",\n  \"osVersion\": \"Windows 11 Pro 23H2\",\n  \"macAddress\": \"00:1A:2B:3C:4D:5E\",\n  \"serialNumber\": \"SN-1234567890\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Renew Certificate",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/setup/renew-certificate",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentCertificate\": \"-----BEGIN CERTIFICATE-----\\nMIIC...\\n-----END CERTIFICATE-----\",\n  \"newCsr\": \"-----BEGIN CERTIFICATE REQUEST-----\\nMIIC...\\n-----END CERTIFICATE REQUEST-----\",\n  \"deviceFingerprint\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Certificates",
+      "item": [
+        {
+          "name": "Verify Certificate",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/certificates/verify",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"certificate\": \"-----BEGIN CERTIFICATE-----\\nMIIC...\\n-----END CERTIFICATE-----\",\n  \"deviceFingerprint\": \"abc123...\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Revoke Certificate",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/certificates/revoke",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"serialNumber\": \"{{certificate_serial}}\",\n  \"reason\": \"key_compromise\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Certificate by Serial",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/certificates/{{certificate_serial}}"
+          }
+        },
+        {
+          "name": "Get Certificate Status",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/certificates/status/{{certificate_serial}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Devices",
+      "item": [
+        {
+          "name": "Register Device",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/devices/register",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fingerprint\": \"abc123def456...\",\n  \"employeeId\": \"EMP-001\",\n  \"hostname\": \"WORKSTATION-001\",\n  \"platform\": \"win32\",\n  \"arch\": \"x64\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get My Devices",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/devices/me"
+          }
+        },
+        {
+          "name": "Get Device by ID",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/devices/{{device_id}}"
+          }
+        },
+        {
+          "name": "Update Device Status",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/devices/{{device_id}}/status",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"approved\",\n  \"reason\": \"Verified by IT\"\n}"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

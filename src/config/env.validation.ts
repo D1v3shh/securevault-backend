@@ -30,7 +30,7 @@ export const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
   JWT_REFRESH_EXPIRATION: z.string().default('7d'),
 
-  // Vault
+  // Vault (KV Secrets)
   VAULT_ENABLED: z.string().default('false'),
   VAULT_ADDR: z.string().default('http://localhost:8200'),
   VAULT_TOKEN: z.string().optional().default(''),
@@ -39,6 +39,10 @@ export const envSchema = z.object({
   VAULT_TRANSIT_ENGINE: z.string().default('transit'),
   VAULT_RETRY_ATTEMPTS: z.string().regex(/^\d+$/).default('3'),
   VAULT_RETRY_DELAY_MS: z.string().regex(/^\d+$/).default('1000'),
+
+  // Vault PKI
+  VAULT_PKI_PATH: z.string().default('pki_int'),
+  VAULT_PKI_ROLE: z.string().default('securevault-device'),
 
   // Storage
   STORAGE_TYPE: z.enum(['local', 's3', 'minio', 'azure', 'gcs']).default('local'),
