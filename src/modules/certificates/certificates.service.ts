@@ -154,6 +154,25 @@ export class CertificatesService {
           CertificateUtil.normalizeSerialNumber(c.serialNumber) === normalizedSerial
         ) || null;
       }
+
+      // Fallback: serial format may differ (e.g., node-forge vs crypto.X509Certificate)
+      // Try matching by stored PEM content or fingerprint
+      if (!storedCert) {
+        this.logger.debug('Serial-based lookup failed — trying PEM/fingerprint fallback');
+        const trimmedPem = certPem.trim();
+        storedCert = await this.certificateModel.findOne({
+          certificatePem: trimmedPem,
+          status: CertificateStatus.ACTIVE,
+        });
+
+        if (!storedCert) {
+          const computedFp = CertificateUtil.computeFingerprint(certPem);
+          storedCert = await this.certificateModel.findOne({
+            fingerprint: computedFp,
+            status: CertificateStatus.ACTIVE,
+          });
+        }
+      }
     } else {
       // ─── Development fallback: lookup by stored PEM ─────
       this.logger.debug('X509 parsing failed — using development PEM-match fallback');

@@ -1,0 +1,262 @@
+{
+  "timestamp": "2026-05-27T04:10:16.977Z",
+  "summary": {
+    "total": 19,
+    "passed": 19,
+    "failed": 0,
+    "avgDuration": 29,
+    "passRate": "100%"
+  },
+  "tests": [
+    {
+      "name": "Health endpoint returns OK",
+      "endpoint": "/health",
+      "method": "GET",
+      "status": 200,
+      "passed": true,
+      "duration": 44,
+      "response": {
+        "statusCode": 200,
+        "message": "Success",
+        "data": {
+          "status": "ok",
+          "timestamp": "2026-05-27T04:10:16.407Z",
+          "service": "SecureVault",
+          "version": "0.0.1",
+          "environment": "development",
+          "checks": {
+            "mongodb": {
+              "status": "up",
+              "readyState": 1
+            }
+          }
+        },
+        "timestamp": "2026-05-27T04:10:16.407Z"
+      }
+    },
+    {
+      "name": "Dev status shows test certificates generated",
+      "endpoint": "/dev/status",
+      "method": "GET",
+      "status": 200,
+      "passed": true,
+      "duration": 14,
+      "response": {
+        "environment": "development",
+        "testCertsGenerated": true,
+        "users": 8,
+        "devices": 4,
+        "activeCerts": 4
+      }
+    },
+    {
+      "name": "List test certificates (should return 4)",
+      "endpoint": "/dev/test-certificates",
+      "method": "GET",
+      "status": 200,
+      "passed": true,
+      "duration": 5,
+      "response": {
+        "count": 4,
+        "roles": [
+          "SUPER_ADMIN",
+          "ADMIN",
+          "MANAGER",
+          "EMPLOYEE"
+        ]
+      }
+    },
+    {
+      "name": "Super Admin password login",
+      "endpoint": "/auth/login",
+      "method": "POST",
+      "status": 200,
+      "passed": true,
+      "duration": 307,
+      "response": {
+        "hasAccessToken": true,
+        "hasRefreshToken": true,
+        "role": "SUPER_ADMIN",
+        "email": "kumavatdivesh671@gmail.com"
+      }
+    },
+    {
+      "name": "Invalid credentials rejected",
+      "endpoint": "/auth/login",
+      "method": "POST",
+      "status": 401,
+      "passed": true,
+      "duration": 10
+    },
+    {
+      "name": "Quick cert login — SUPER_ADMIN",
+      "endpoint": "/dev/quick-cert-login",
+      "method": "POST",
+      "status": 200,
+      "passed": true,
+      "duration": 38,
+      "response": {
+        "hasAccessToken": true,
+        "hasSessionId": true,
+        "role": "SUPER_ADMIN",
+        "deviceId": "dev-test-super_admin-6b066b84",
+        "certSerial": "B9:D8:C9:8E:72:5A:ED:A4:19:7B:72:A0:C2:E8:7A:B8"
+      }
+    },
+    {
+      "name": "Quick cert login — ADMIN",
+      "endpoint": "/dev/quick-cert-login",
+      "method": "POST",
+      "status": 200,
+      "passed": true,
+      "duration": 21,
+      "response": {
+        "hasAccessToken": true,
+        "hasSessionId": true,
+        "role": "ADMIN",
+        "deviceId": "dev-test-admin-2152a980",
+        "certSerial": "C1:D4:C0:9B:2C:CD:4C:BC:33:B5:72:E7:6C:4F:0F:9B"
+      }
+    },
+    {
+      "name": "Quick cert login — MANAGER",
+      "endpoint": "/dev/quick-cert-login",
+      "method": "POST",
+      "status": 200,
+      "passed": true,
+      "duration": 19,
+      "response": {
+        "hasAccessToken": true,
+        "hasSessionId": true,
+        "role": "MANAGER",
+        "deviceId": "dev-test-manager-cdf37bfe",
+        "certSerial": "69:A6:25:17:A6:A9:07:B1:48:2F:C7:FB:2E:D8:61:07"
+      }
+    },
+    {
+      "name": "Quick cert login — EMPLOYEE",
+      "endpoint": "/dev/quick-cert-login",
+      "method": "POST",
+      "status": 200,
+      "passed": true,
+      "duration": 20,
+      "response": {
+        "hasAccessToken": true,
+        "hasSessionId": true,
+        "role": "EMPLOYEE",
+        "deviceId": "dev-test-employee-8b5f1c29",
+        "certSerial": "79:C9:63:F8:D9:C9:E7:70:C8:4C:32:44:C7:8E:FE:04"
+      }
+    },
+    {
+      "name": "Invalid employee ID rejected",
+      "endpoint": "/dev/quick-cert-login",
+      "method": "POST",
+      "status": 400,
+      "passed": true,
+      "duration": 4
+    },
+    {
+      "name": "Verify valid certificate",
+      "endpoint": "/certificates/verify",
+      "method": "POST",
+      "status": 200,
+      "passed": true,
+      "duration": 17,
+      "response": {
+        "valid": true,
+        "serialNumber": "B9:D8:C9:8E:72:5A:ED:A4:19:7B:72:A0:C2:E8:7A:B8",
+        "employeeId": "EMP-SA-001"
+      }
+    },
+    {
+      "name": "Reject certificate with wrong fingerprint",
+      "endpoint": "/certificates/verify",
+      "method": "POST",
+      "status": 200,
+      "passed": true,
+      "duration": 11,
+      "response": {
+        "valid": false,
+        "reason": "Device fingerprint mismatch — certificate not bound to this device"
+      }
+    },
+    {
+      "name": "Reject invalid PEM format",
+      "endpoint": "/certificates/verify",
+      "method": "POST",
+      "status": 200,
+      "passed": true,
+      "duration": 2,
+      "response": {
+        "valid": false,
+        "reason": "Invalid certificate PEM format"
+      }
+    },
+    {
+      "name": "Get my devices (cert-auth user)",
+      "endpoint": "/devices/me",
+      "method": "GET",
+      "status": 200,
+      "passed": true,
+      "duration": 12,
+      "response": {
+        "deviceCount": 1
+      }
+    },
+    {
+      "name": "Unauthenticated access rejected",
+      "endpoint": "/devices/me",
+      "method": "GET",
+      "status": 401,
+      "passed": true,
+      "duration": 2
+    },
+    {
+      "name": "List all users (admin)",
+      "endpoint": "/admin/users",
+      "method": "GET",
+      "status": 200,
+      "passed": true,
+      "duration": 9,
+      "response": {
+        "userCount": 8
+      }
+    },
+    {
+      "name": "List all devices (admin)",
+      "endpoint": "/admin/devices",
+      "method": "GET",
+      "status": 200,
+      "passed": true,
+      "duration": 8,
+      "response": {
+        "deviceCount": 4
+      }
+    },
+    {
+      "name": "View audit logs (admin)",
+      "endpoint": "/admin/audit-logs",
+      "method": "GET",
+      "status": 200,
+      "passed": true,
+      "duration": 8,
+      "response": {
+        "logCount": 20
+      }
+    },
+    {
+      "name": "Get certificate by serial",
+      "endpoint": "/certificates/:serial",
+      "method": "GET",
+      "status": 200,
+      "passed": true,
+      "duration": 6,
+      "response": {
+        "found": true,
+        "status": "active",
+        "employeeId": "EMP-SA-001"
+      }
+    }
+  ]
+}
