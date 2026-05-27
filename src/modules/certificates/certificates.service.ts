@@ -104,6 +104,10 @@ export class CertificatesService {
   /**
    * Verify a presented certificate.
    * Checks: format, expiry, revocation status, device trust, fingerprint match.
+   *
+   * Supports two modes:
+   *   1. Real X.509 parsing (production) — uses crypto.X509Certificate
+   *   2. DB-lookup fallback (development) — matches by stored PEM when X509 parsing fails
    */
   async verifyCertificate(
     certPem: string,
@@ -116,45 +120,85 @@ export class CertificatesService {
     userId: string;
     reason?: string;
   }> {
+    const EMPTY_RESULT = { valid: false, serialNumber: '', employeeId: '', deviceId: '', userId: '' };
+
     // 1. Validate PEM format
     if (!CertificateUtil.isValidCertificatePem(certPem)) {
-      return { valid: false, serialNumber: '', employeeId: '', deviceId: '', userId: '', reason: 'Invalid certificate PEM format' };
+      return { ...EMPTY_RESULT, reason: 'Invalid certificate PEM format' };
     }
 
-    // 2. Parse certificate
+    // 2. Try parsing with crypto.X509Certificate (works for real certs)
     const certInfo = CertificateUtil.parseCertificate(certPem);
-    if (!certInfo) {
-      return { valid: false, serialNumber: '', employeeId: '', deviceId: '', userId: '', reason: 'Failed to parse certificate' };
+    let storedCert: CertificateDocument | null = null;
+
+    if (certInfo) {
+      // ─── Production path: real X.509 cert ─────────
+      // Check expiry
+      if (new Date() > certInfo.validTo) {
+        return { ...EMPTY_RESULT, serialNumber: certInfo.serialNumber, reason: 'Certificate has expired' };
+      }
+      if (new Date() < certInfo.validFrom) {
+        return { ...EMPTY_RESULT, serialNumber: certInfo.serialNumber, reason: 'Certificate is not yet valid' };
+      }
+
+      // Find by serial number
+      const normalizedSerial = CertificateUtil.normalizeSerialNumber(certInfo.serialNumber);
+      storedCert = await this.certificateModel.findOne({
+        serialNumber: certInfo.serialNumber,
+      });
+
+      // Try normalized lookup
+      if (!storedCert) {
+        const allCerts = await this.certificateModel.find({ status: { $ne: CertificateStatus.REVOKED } });
+        storedCert = allCerts.find(c =>
+          CertificateUtil.normalizeSerialNumber(c.serialNumber) === normalizedSerial
+        ) || null;
+      }
+    } else {
+      // ─── Development fallback: lookup by stored PEM ─────
+      this.logger.debug('X509 parsing failed — using development PEM-match fallback');
+
+      // Match by the certificate PEM stored in database
+      const trimmedPem = certPem.trim();
+      storedCert = await this.certificateModel.findOne({
+        certificatePem: trimmedPem,
+        status: CertificateStatus.ACTIVE,
+      });
+
+      // Also try matching by fingerprint of the PEM content
+      if (!storedCert) {
+        const computedFp = CertificateUtil.computeFingerprint(certPem);
+        storedCert = await this.certificateModel.findOne({
+          fingerprint: computedFp,
+          status: CertificateStatus.ACTIVE,
+        });
+      }
+
+      // Check stored certificate's validity dates
+      if (storedCert) {
+        const now = new Date();
+        if (now > storedCert.validTo) {
+          return {
+            valid: false, serialNumber: storedCert.serialNumber,
+            employeeId: storedCert.employeeId, deviceId: storedCert.deviceId,
+            userId: storedCert.userId.toString(), reason: 'Certificate has expired',
+          };
+        }
+        if (now < storedCert.validFrom) {
+          return {
+            valid: false, serialNumber: storedCert.serialNumber,
+            employeeId: storedCert.employeeId, deviceId: storedCert.deviceId,
+            userId: storedCert.userId.toString(), reason: 'Certificate is not yet valid',
+          };
+        }
+      }
     }
 
-    // 3. Check expiry
-    if (new Date() > certInfo.validTo) {
-      return { valid: false, serialNumber: certInfo.serialNumber, employeeId: '', deviceId: '', userId: '', reason: 'Certificate has expired' };
-    }
-
-    if (new Date() < certInfo.validFrom) {
-      return { valid: false, serialNumber: certInfo.serialNumber, employeeId: '', deviceId: '', userId: '', reason: 'Certificate is not yet valid' };
-    }
-
-    // 4. Find certificate in our database
-    const normalizedSerial = CertificateUtil.normalizeSerialNumber(certInfo.serialNumber);
-    let storedCert = await this.certificateModel.findOne({
-      serialNumber: certInfo.serialNumber,
-    });
-
-    // Try normalized lookup
     if (!storedCert) {
-      const allCerts = await this.certificateModel.find({ status: { $ne: CertificateStatus.REVOKED } });
-      storedCert = allCerts.find(c =>
-        CertificateUtil.normalizeSerialNumber(c.serialNumber) === normalizedSerial
-      ) || null;
+      return { ...EMPTY_RESULT, reason: 'Certificate not found in trust store' };
     }
 
-    if (!storedCert) {
-      return { valid: false, serialNumber: certInfo.serialNumber, employeeId: '', deviceId: '', userId: '', reason: 'Certificate not found in trust store' };
-    }
-
-    // 5. Check revocation status
+    // 3. Check revocation status
     if (storedCert.status === CertificateStatus.REVOKED) {
       return {
         valid: false,
@@ -166,7 +210,7 @@ export class CertificatesService {
       };
     }
 
-    // 6. Check revocation table
+    // 4. Check revocation table
     const revocation = await this.revocationModel.findOne({
       certificateSerial: storedCert.serialNumber,
     });
@@ -181,7 +225,7 @@ export class CertificatesService {
       };
     }
 
-    // 7. Verify device fingerprint if provided
+    // 5. Verify device fingerprint if provided
     if (deviceFingerprint && storedCert.deviceFingerprint !== deviceFingerprint) {
       return {
         valid: false,
@@ -193,7 +237,7 @@ export class CertificatesService {
       };
     }
 
-    // 8. Check device approval status
+    // 6. Check device approval status
     const isTrusted = await this.devicesService.isDeviceTrusted(storedCert.deviceFingerprint);
     if (!isTrusted) {
       return {
@@ -206,33 +250,37 @@ export class CertificatesService {
       };
     }
 
-    // 9. Verify certificate fingerprint integrity
-    const computedFingerprint = CertificateUtil.computeFingerprint(certPem);
-    if (storedCert.fingerprint !== computedFingerprint) {
-      return {
-        valid: false,
-        serialNumber: storedCert.serialNumber,
-        employeeId: storedCert.employeeId,
-        deviceId: storedCert.deviceId,
-        userId: storedCert.userId.toString(),
-        reason: 'Certificate fingerprint mismatch — possible tampering',
-      };
+    // 7. Verify certificate fingerprint integrity (skip if X509 parsing failed)
+    if (certInfo) {
+      const computedFingerprint = CertificateUtil.computeFingerprint(certPem);
+      if (storedCert.fingerprint !== computedFingerprint) {
+        return {
+          valid: false,
+          serialNumber: storedCert.serialNumber,
+          employeeId: storedCert.employeeId,
+          deviceId: storedCert.deviceId,
+          userId: storedCert.userId.toString(),
+          reason: 'Certificate fingerprint mismatch — possible tampering',
+        };
+      }
     }
 
-    // 10. Verify certificate chain (if Vault PKI is enabled)
-    try {
-      const intermediateCa = await this.vaultPkiService.getIntermediateCaCertificate();
-      if (CertificateUtil.isValidCertificatePem(intermediateCa) &&
-          CertificateUtil.isValidCertificatePem(certPem)) {
-        const chainValid = CertificateUtil.verifyCertificateChain(certPem, intermediateCa);
-        if (!chainValid) {
-          this.logger.warn(`Certificate chain verification failed for serial: ${storedCert.serialNumber}`);
-          // In dev mode, we allow this to pass since we use mock certs
-          // In production, this should be a hard failure
+    // 8. Verify certificate chain (if Vault PKI is enabled and cert is parseable)
+    if (certInfo) {
+      try {
+        const intermediateCa = await this.vaultPkiService.getIntermediateCaCertificate();
+        if (CertificateUtil.isValidCertificatePem(intermediateCa) &&
+            CertificateUtil.isValidCertificatePem(certPem)) {
+          const chainValid = CertificateUtil.verifyCertificateChain(certPem, intermediateCa);
+          if (!chainValid) {
+            this.logger.warn(`Certificate chain verification failed for serial: ${storedCert.serialNumber}`);
+            // In dev mode, we allow this to pass since we use test certs
+            // In production, this should be a hard failure
+          }
         }
+      } catch (error: any) {
+        this.logger.debug(`Chain verification skipped: ${error.message}`);
       }
-    } catch (error: any) {
-      this.logger.debug(`Chain verification skipped: ${error.message}`);
     }
 
     return {

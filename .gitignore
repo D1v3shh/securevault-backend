@@ -36,6 +36,9 @@ Thumbs.db
 # Test
 coverage/
 
+# Test certificates (generated, contain private keys)
+test-certificates/
+
 # Docker
 docker-data/
 vault-data/

@@ -26,6 +26,9 @@ import { CertificatesModule } from './modules/certificates/certificates.module';
 import { SetupModule } from './modules/setup/setup.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
 
+// ─── Development Testing Module (non-production only) ───
+import { DevTestModule } from './modules/dev/dev-test.module';
+
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from './modules/auth/guards/roles.guard';
 
@@ -93,6 +96,9 @@ import { UsersService } from './modules/users/users.service';
     CertificatesModule,
     SetupModule,
     SessionsModule,
+
+    // ─── Dev Testing (non-production only) ──────────
+    ...(process.env.NODE_ENV !== 'production' ? [DevTestModule] : []),
   ],
 
   providers: [
