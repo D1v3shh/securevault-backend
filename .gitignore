@@ -33,12 +33,31 @@ logs/*
 .DS_Store
 Thumbs.db
 
-# Test
+# Test — coverage, reports, generated certs, scripts
 coverage/
 
+<<<<<<< HEAD
 # Test certificates (generated, contain private keys)
 test-certificates/
 
+=======
+# Test certificates (generated PEMs with private keys — NEVER commit)
+test-certificates/
+
+# Test reports (auto-generated JSON reports)
+test-reports/
+
+# Test scripts (only needed on testing branch)
+scripts/generate-test-certs.ts
+scripts/run-api-tests.ts
+
+# Dev testing module (only for local testing, not production)
+src/modules/dev/
+
+# Misc test files
+testing.txt
+
+>>>>>>> main
 # Docker
 docker-data/
 vault-data/

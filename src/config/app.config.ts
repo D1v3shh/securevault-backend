@@ -2,6 +2,7 @@ import { registerAs } from '@nestjs/config';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 
+<<<<<<< HEAD
 let packageVersion = '1.0.0';
 try {
   // Try process.cwd() first (works in all contexts), then __dirname fallback
@@ -11,6 +12,11 @@ try {
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
   packageVersion = pkg.version || '1.0.0';
 } catch { /* use default */ }
+=======
+const packageJson = JSON.parse(
+  readFileSync(join(__dirname, '..', '..', '..', 'package.json'), 'utf-8'),
+);
+>>>>>>> main
 
 export default registerAs('app', () => ({
   name: process.env.APP_NAME || 'SecureVault',
