@@ -3,7 +3,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 
 const packageJson = JSON.parse(
-  readFileSync(join(__dirname, '..', '..', 'package.json'), 'utf-8'),
+  readFileSync(join(__dirname, '..', '..', '..', 'package.json'), 'utf-8'),
 );
 
 export default registerAs('app', () => ({
