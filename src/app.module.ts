@@ -25,6 +25,7 @@ import { DevicesModule } from './modules/devices/devices.module';
 import { CertificatesModule } from './modules/certificates/certificates.module';
 import { SetupModule } from './modules/setup/setup.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
+import { SharesModule } from './modules/shares/shares.module';
 
 // ─── Development Testing Module (non-production only) ───
 import { DevTestModule } from './modules/dev/dev-test.module';
@@ -90,6 +91,7 @@ import { UsersService } from './modules/users/users.service';
     AdminModule,
     HealthModule,
     QueueModule,
+    SharesModule,
 
     // ─── PKI & Device Trust Modules ─────────────────
     DevicesModule,
