@@ -25,6 +25,7 @@ import { DevicesModule } from './modules/devices/devices.module';
 import { CertificatesModule } from './modules/certificates/certificates.module';
 import { SetupModule } from './modules/setup/setup.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
+import { SharesModule } from './modules/shares/shares.module';
 
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from './modules/auth/guards/roles.guard';
@@ -87,6 +88,7 @@ import { UsersService } from './modules/users/users.service';
     AdminModule,
     HealthModule,
     QueueModule,
+    SharesModule,
 
     // ─── PKI & Device Trust Modules ─────────────────
     DevicesModule,

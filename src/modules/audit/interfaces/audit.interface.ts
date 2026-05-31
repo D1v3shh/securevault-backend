@@ -51,6 +51,9 @@ export enum AuditAction {
   FILE_DOWNLOAD = 'file.download',
   FILE_DELETE = 'file.delete',
   FILE_SHARE = 'file.share',
+  FILE_SHARE_REVOKE = 'file.share.revoke',
+  FILE_SHARE_ACCESS = 'file.share.access',
+  FILE_SHARE_EXPIRE = 'file.share.expire',
 
   // ─── Admin ────────────────────────────────────────
   ADMIN_ACTION = 'admin.action',
