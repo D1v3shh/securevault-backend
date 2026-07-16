@@ -7,26 +7,22 @@
 ## Table of Contents
 
 - [Features](#features)
-- [Architecture](#architecture)
 - [Tech Stack](#tech-stack)
 - [Prerequisites](#prerequisites)
-- [Getting Started](#getting-started)
-  - [1. Clone the Repository](#1-clone-the-repository)
-  - [2. Install Dependencies](#2-install-dependencies)
-  - [3. Start Infrastructure (Docker)](#3-start-infrastructure-docker)
-  - [4. Configure Environment](#4-configure-environment)
-  - [5. Run the Application](#5-run-the-application)
+- [Getting Started (From Scratch)](#getting-started-from-scratch)
+  - [Step 1 — Clone & Install](#step-1--clone--install)
+  - [Step 2 — Start Infrastructure](#step-2--start-infrastructure)
+  - [Step 3 — Configure Environment](#step-3--configure-environment)
+  - [Step 4 — Setup Vault PKI](#step-4--setup-vault-pki)
+  - [Step 5 — Run the Application](#step-5--run-the-application)
+  - [Step 6 — Verify Everything Works](#step-6--verify-everything-works)
+- [API Walkthrough](#api-walkthrough)
 - [API Reference](#api-reference)
-  - [Authentication](#authentication)
-  - [Admin — User Management](#admin--user-management)
-  - [Files](#files)
-  - [Users — Self Service](#users--self-service)
-  - [Health](#health)
+- [Architecture](#architecture)
 - [Security](#security)
 - [Role Hierarchy (RBAC)](#role-hierarchy-rbac)
 - [Environment Variables](#environment-variables)
-- [All Available Scripts](#all-available-scripts)
-- [Project Structure](#project-structure)
+- [Scripts](#scripts)
 - [Troubleshooting](#troubleshooting)
 - [License](#license)
 
@@ -34,87 +30,40 @@
 
 ## Features
 
-- **Authentication & Authorization** — JWT-based auth with access/refresh token rotation, token blacklisting via Redis
-- **Role-Based Access Control (RBAC)** — 5-tier hierarchy: `SUPER_ADMIN` → `ADMIN` → `MANAGER` → `EMPLOYEE` → `VIEWER`
-- **Envelope Encryption** — AES-256-GCM with per-file DEKs encrypted by a Vault-managed KEK
-- **HashiCorp Vault Integration** — Secrets management and encryption key storage
-- **Encrypted File Storage** — Files encrypted at rest with integrity verification (SHA-256 checksums)
-- **Admin User Management** — Create accounts, assign roles, force password resets, activate/deactivate users
-- **Comprehensive Audit Logging** — Every sensitive operation tracked with user, IP, and metadata
-- **Rate Limiting** — Configurable rate limits via `@nestjs/throttler`
-- **API Documentation** — Auto-generated Swagger/OpenAPI docs
-- **Background Processing** — BullMQ-based queues for async audit logging and file cleanup
-- **Health Checks** — System health endpoints for monitoring (MongoDB, Redis, Vault)
-- **Super Admin Seeding** — Automatic first-run admin account creation
-
----
-
-## Architecture
-
-```
-src/
-├── main.ts                        # Bootstrap — Helmet, CORS, Swagger, Pipes, Filters
-├── app.module.ts                  # Root module wiring + super admin seed
-├── config/                        # Environment config (Zod-validated)
-│   ├── app.config.ts
-│   ├── configuration.ts           # Aggregates all config loaders
-│   ├── database.config.ts
-│   ├── env.validation.ts          # Zod schema for all env vars
-│   ├── jwt.config.ts
-│   ├── redis.config.ts
-│   ├── storage.config.ts
-│   └── vault.config.ts
-├── common/                        # Shared filters, interceptors, DTOs
-│   ├── dto/pagination.dto.ts
-│   ├── filters/http-exception.filter.ts
-│   └── interceptors/
-│       ├── logging.interceptor.ts
-│       └── transform.interceptor.ts
-├── shared/                        # Logger, constants, crypto/file utils
-│   ├── constants/app.constants.ts
-│   ├── logger/logger.service.ts
-│   └── utils/
-│       ├── crypto.util.ts
-│       └── file.util.ts
-└── modules/
-    ├── auth/                      # JWT auth, strategies, guards, decorators
-    ├── users/                     # User CRUD, schema, password management
-    ├── admin/                     # Admin user management, audit viewing
-    ├── files/                     # File upload/download with encryption
-    ├── permissions/               # RBAC roles, hierarchy, permissions
-    ├── encryption/                # AES-256-GCM envelope encryption
-    ├── vault/                     # HashiCorp Vault integration
-    ├── storage/                   # Storage abstraction (local, S3-ready)
-    ├── audit/                     # Audit logging with structured events
-    ├── queue/                     # Background processors (audit, files)
-    ├── health/                    # Health check endpoints
-    ├── redis/                     # Global Redis client provider
-    └── database/                  # MongoDB connection module
-```
+- **JWT Authentication** — Access/refresh token rotation with Redis-backed blacklisting
+- **RBAC** — 5-tier role hierarchy: `SUPER_ADMIN` → `ADMIN` → `MANAGER` → `EMPLOYEE` → `VIEWER`
+- **Envelope Encryption** — AES-256-GCM per-file DEKs encrypted by a Vault-managed KEK
+- **HashiCorp Vault PKI** — X.509 certificate signing for device trust
+- **Device Enrollment** — Token-based onboarding with fingerprint verification
+- **Encrypted File Storage** — Files encrypted at rest with SHA-256 integrity checksums
+- **Admin User Management** — Create accounts, assign roles, force password resets
+- **Audit Logging** — Every sensitive operation tracked with user, IP, and metadata
+- **Rate Limiting** — Configurable via `@nestjs/throttler`
+- **Swagger Docs** — Auto-generated OpenAPI documentation
+- **Background Processing** — BullMQ queues for async audit logging and file cleanup
+- **Health Checks** — MongoDB, Redis, Vault connectivity monitoring
 
 ---
 
 ## Tech Stack
 
 | Layer | Technology |
-|-------|-----------|
+|-------|------------|
 | **Runtime** | Node.js ≥ 20.x |
 | **Framework** | NestJS 11 |
 | **Language** | TypeScript 5.x (strict mode) |
 | **Database** | MongoDB 7 via Mongoose 9 |
-| **Cache / Sessions** | Redis 7 via ioredis |
-| **Secrets Management** | HashiCorp Vault 1.15 |
+| **Cache** | Redis 7 via ioredis |
+| **Secrets** | HashiCorp Vault 1.15 |
 | **Queue** | BullMQ (Redis-backed) |
 | **Auth** | Passport.js + JWT |
 | **Validation** | class-validator + Zod (env) |
-| **API Docs** | Swagger / OpenAPI via `@nestjs/swagger` |
+| **API Docs** | Swagger / OpenAPI |
 | **Security** | Helmet, CORS, bcrypt, AES-256-GCM |
 
 ---
 
 ## Prerequisites
-
-Before you begin, make sure you have the following installed:
 
 | Tool | Version | Check Command |
 |------|---------|---------------|
@@ -126,151 +75,240 @@ Before you begin, make sure you have the following installed:
 
 ---
 
-## Getting Started
+## Getting Started (From Scratch)
 
-### 1. Clone the Repository
+This guide assumes a **completely fresh setup** — no prior data, no running containers.
+
+### Step 1 — Clone & Install
 
 ```bash
 git clone https://github.com/D1v3shh/securevault-backend.git
 cd securevault-backend
-```
-
-### 2. Install Dependencies
-
-```bash
 npm install
 ```
 
-### 3. Start Infrastructure (Docker)
+**What happens:** Installs all Node.js dependencies (~676 packages).
 
-This starts MongoDB, Redis, and HashiCorp Vault containers for local development:
+### Step 2 — Start Infrastructure
+
+Launch MongoDB, Redis, and HashiCorp Vault using Docker Compose:
 
 ```bash
 docker compose up -d
 ```
 
-**Services started:**
+This starts three containers:
 
-| Service | Port | Container Name |
-|---------|------|----------------|
-| MongoDB 7 | `localhost:27017` | `securevault-mongo` |
-| Redis 7 | `localhost:6379` | `securevault-redis` |
-| HashiCorp Vault | `localhost:8200` | `securevault-vault` |
+| Service | Port | Container Name | Purpose |
+|---------|------|----------------|---------|
+| MongoDB 7 | `27017` | `securevault-mongo` | Primary database |
+| Redis 7 | `6379` | `securevault-redis` | Token blacklisting, caching, BullMQ |
+| Vault 1.15 | `8200` | `securevault-vault` | Secrets management & PKI |
 
-To verify all containers are running:
+Verify all three are running:
 
 ```bash
 docker compose ps
 ```
 
-To view container logs:
+You should see all three containers with status `Up`.
+
+> **Note:** Vault starts in **dev mode** with root token `dev-root-token`. This is fine for development but must never be used in production.
+
+### Step 3 — Configure Environment
 
 ```bash
-# All services
-docker compose logs -f
-
-# Specific service
-docker compose logs -f mongodb
-docker compose logs -f redis
-docker compose logs -f vault
-```
-
-To stop all services:
-
-```bash
-docker compose down
-```
-
-To stop and remove all data (clean reset):
-
-```bash
-docker compose down -v
-```
-
-### 4. Configure Environment
-
-```bash
-# Copy the template
 cp .env.example .env
 ```
 
-Edit `.env` and fill in the required values. The defaults in `.env.example` are configured to work with the Docker Compose services out of the box.
+Now open `.env` and set the **two required JWT secrets**. Generate them with:
 
-**Minimum required changes for local development:**
-
-```env
-# JWT secrets — MUST be at least 32 characters
-JWT_ACCESS_SECRET=your-access-secret-at-least-32-characters-long!!
-JWT_REFRESH_SECRET=your-refresh-secret-at-least-32-characters-long!!
-
-# Super Admin seed credentials (created on first startup)
-SEED_SUPER_ADMIN_EMAIL=admin@securevault.local
-SEED_SUPER_ADMIN_PASSWORD=YourStrongPassword123!
-SEED_SUPER_ADMIN_FIRST_NAME=System
-SEED_SUPER_ADMIN_LAST_NAME=Administrator
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-> **⚠️ Important:** JWT secrets must be at least 32 characters. The app will refuse to start if they're shorter (validated by Zod at boot).
+Run the command **twice** and paste each output into:
 
-### 5. Run the Application
+```env
+JWT_ACCESS_SECRET=<paste-first-output-here>
+JWT_REFRESH_SECRET=<paste-second-output-here>
+```
 
-#### Development Mode (with hot-reload)
+Then set your super admin credentials (the account created on first startup):
+
+```env
+SEED_SUPER_ADMIN_EMAIL=admin@securevault.local
+SEED_SUPER_ADMIN_PASSWORD=YourStrongPassword123!
+SEED_SUPER_ADMIN_FIRST_NAME=Super
+SEED_SUPER_ADMIN_LAST_NAME=Admin
+```
+
+> **⚠️ JWT secrets must be at least 32 characters.** The app validates all env vars at boot via Zod and will refuse to start if they're too short.
+
+**Everything else has working defaults** for local development (MongoDB URI, Redis password, Vault token all match `docker-compose.yml`).
+
+### Step 4 — Setup Vault PKI
+
+The PKI engine powers device certificate issuance. Run the setup script **after Vault is running**:
+
+```bash
+npx ts-node scripts/setup-vault-pki.ts
+```
+
+**What this does (9 steps):**
+1. Enables the PKI secrets engine (root)
+2. Generates a Root CA (`CN=SecureVault Root CA`, RSA 4096-bit)
+3. Configures Root CA URLs (issuing certificates + CRL)
+4. Enables an Intermediate PKI secrets engine
+5. Generates an Intermediate CA CSR
+6. Signs the Intermediate CA with the Root CA
+7. Installs the signed Intermediate certificate
+8. Configures Intermediate CA URLs
+9. Creates the `securevault-device` PKI role for issuing client certificates
+
+You should see:
+
+```
+🔐 Setting up Vault PKI at http://localhost:8200
+...
+✅ Vault PKI setup complete!
+```
+
+> **Note:** Vault runs in dev mode — data is lost on container restart. Re-run this script after `docker compose down -v`.
+
+### Step 5 — Run the Application
 
 ```bash
 npm run start:dev
 ```
 
-#### Production Mode
+**What happens on first startup:**
+1. Zod validates all environment variables
+2. Connects to MongoDB, Redis, and Vault
+3. **Auto-seeds the super admin account** using your `SEED_SUPER_ADMIN_*` env vars
+4. Starts Swagger docs server
+5. Begins listening on port 3000
 
-```bash
-# Build the project
-npm run build
-
-# Start the production server
-npm run start:prod
-```
-
-#### Debug Mode
-
-```bash
-npm run start:debug
-```
-
-### 6. Verify It's Running
-
-Once the app starts, you should see output like:
+You should see:
 
 ```
+✅ Super admin seeded: admin@securevault.local
+📄 Swagger docs available at /api/docs
 🚀 SecureVault API running on http://0.0.0.0:3000/api/v1
-📄 Swagger docs available at /docs
 📋 Environment: development
 ```
 
-**Access points:**
+### Step 6 — Verify Everything Works
 
-| Endpoint | URL |
-|----------|-----|
-| **API Base** | `http://localhost:3000/api/v1` |
-| **Swagger Docs** | `http://localhost:3000/docs` |
-| **Health Check** | `http://localhost:3000/api/v1/health` |
-
-#### Quick Smoke Test
+**A) Health check (no auth required):**
 
 ```bash
-# Health check (public — no auth needed)
 curl http://localhost:3000/api/v1/health
+```
 
-# Login with the seeded super admin
+Expected: `{"statusCode": 200, "data": {"status": "ok"}, ...}`
+
+**B) Login with the super admin:**
+
+```bash
+curl -s -X POST http://localhost:3000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@securevault.local","password":"YourStrongPassword123!"}' | jq
+```
+
+Expected: Response containing `accessToken`, `refreshToken`, and user profile.
+
+**C) Open Swagger UI:**
+
+Visit [http://localhost:3000/api/docs](http://localhost:3000/api/docs) in your browser for interactive API documentation.
+
+---
+
+## API Walkthrough
+
+Here's the typical workflow after getting the app running:
+
+### 1. Login → Get Tokens
+
+```bash
+# Login as super admin
 curl -X POST http://localhost:3000/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"admin@securevault.local","password":"YourStrongPassword123!"}'
+```
+
+Copy the `accessToken` from the response. Use it as `Bearer <token>` for all subsequent requests.
+
+### 2. Create an Employee User
+
+```bash
+curl -X POST http://localhost:3000/api/v1/admin/create-user \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d '{
+    "email": "john.doe@company.com",
+    "firstName": "John",
+    "lastName": "Doe",
+    "role": "EMPLOYEE",
+    "department": "Engineering"
+  }'
+```
+
+The response includes a `temporaryPassword` — the employee must change it on first login.
+
+### 3. Create an Enrollment Token
+
+```bash
+curl -X POST http://localhost:3000/api/v1/admin/create-enrollment-token \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d '{
+    "userId": "<user_id_from_step_2>",
+    "employeeId": "EMP-001",
+    "expiresInHours": 24,
+    "maxDevices": 1
+  }'
+```
+
+### 4. Enroll a Device (SetupApp Flow)
+
+```bash
+curl -X POST http://localhost:3000/api/v1/setup/enroll \
+  -H "Content-Type: application/json" \
+  -d '{
+    "enrollmentToken": "<token_from_step_3>",
+    "employeeId": "EMP-001",
+    "csr": "-----BEGIN CERTIFICATE REQUEST-----\n...\n-----END CERTIFICATE REQUEST-----",
+    "deviceFingerprint": "<sha256-device-hash>",
+    "hostname": "WORKSTATION-001",
+    "platform": "linux",
+    "arch": "x64"
+  }'
+```
+
+The response includes a signed X.509 certificate for the device.
+
+### 5. Upload an Encrypted File
+
+```bash
+curl -X POST http://localhost:3000/api/v1/files/upload \
+  -H "Authorization: Bearer <access_token>" \
+  -F "file=@/path/to/document.pdf"
+```
+
+### 6. Download & Decrypt a File
+
+```bash
+curl -X GET http://localhost:3000/api/v1/files/<file_id>/download \
+  -H "Authorization: Bearer <access_token>" \
+  --output downloaded_file.pdf
 ```
 
 ---
 
 ## API Reference
 
-All endpoints are prefixed with `/api/v1`. Authentication is required unless marked **Public**.
+All endpoints are prefixed with `/api/v1`. Authentication required unless marked **Public**.
 
 ### Authentication
 
@@ -278,23 +316,50 @@ All endpoints are prefixed with `/api/v1`. Authentication is required unless mar
 |--------|----------|-------------|------|
 | `POST` | `/auth/login` | Login with email + password | Public |
 | `POST` | `/auth/refresh` | Refresh access token | Public |
-| `POST` | `/auth/logout` | Logout (revoke tokens) | Required |
+| `POST` | `/auth/certificate-login` | Passwordless cert login | Public |
+| `POST` | `/auth/logout` | Revoke tokens | Required |
 | `POST` | `/auth/change-password` | Change own password | Required |
 | `POST` | `/auth/force-change-password` | First-login password change | Required |
 
-### Admin — User Management
+### Admin — User & Device Management
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| `POST` | `/admin/users` | Create a new user | SUPER_ADMIN, ADMIN |
-| `GET` | `/admin/users` | List all users (paginated) | SUPER_ADMIN, ADMIN |
-| `GET` | `/admin/users/:id` | Get user details | SUPER_ADMIN, ADMIN |
-| `PATCH` | `/admin/users/:id` | Update user info | SUPER_ADMIN, ADMIN |
-| `POST` | `/admin/users/:id/activate` | Activate user account | SUPER_ADMIN, ADMIN |
-| `POST` | `/admin/users/:id/deactivate` | Deactivate user account | SUPER_ADMIN, ADMIN |
-| `POST` | `/admin/users/:id/reset-password` | Reset user password | SUPER_ADMIN, ADMIN |
-| `PATCH` | `/admin/users/:id/role` | Change user role | SUPER_ADMIN only |
-| `GET` | `/admin/audit-logs` | View audit logs | SUPER_ADMIN, ADMIN |
+| `POST` | `/admin/create-user` | Create a new user | ADMIN+ |
+| `POST` | `/admin/create-enrollment-token` | Issue enrollment token | ADMIN+ |
+| `GET` | `/admin/users` | List all users (paginated) | ADMIN+ |
+| `GET` | `/admin/devices` | List all devices | ADMIN+ |
+| `GET` | `/admin/audit-logs` | View audit logs | ADMIN+ |
+| `POST` | `/admin/users/:id/activate` | Activate user | ADMIN+ |
+| `POST` | `/admin/users/:id/deactivate` | Deactivate user | ADMIN+ |
+| `POST` | `/admin/users/:id/reset-password` | Reset user password | ADMIN+ |
+| `PATCH` | `/admin/users/:id/role` | Change user role | SUPER_ADMIN |
+
+### Setup — Device Enrollment
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| `POST` | `/setup/verify-token` | Validate enrollment token | Public |
+| `POST` | `/setup/enroll` | Enroll device + issue certificate | Public |
+| `POST` | `/setup/renew-certificate` | Renew device certificate | Public |
+
+### Certificates
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| `POST` | `/certificates/verify` | Verify a certificate | Public |
+| `POST` | `/certificates/revoke` | Revoke a certificate | Required |
+| `GET` | `/certificates/:serial` | Get certificate details | Required |
+| `GET` | `/certificates/status/:serial` | Get certificate status | Required |
+
+### Devices
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| `POST` | `/devices/register` | Register a device | Required |
+| `GET` | `/devices/me` | List own devices | Required |
+| `GET` | `/devices/:id` | Get device details | Required |
+| `PATCH` | `/devices/:id/status` | Update device status | ADMIN+ |
 
 ### Files
 
@@ -303,7 +368,7 @@ All endpoints are prefixed with `/api/v1`. Authentication is required unless mar
 | `POST` | `/files/upload` | Upload and encrypt a file | Required |
 | `GET` | `/files` | List own files (paginated) | Required |
 | `GET` | `/files/:id` | Get file metadata | Required |
-| `GET` | `/files/:id/download` | Download and decrypt file | Required |
+| `GET` | `/files/:id/download` | Download and decrypt | Required |
 | `DELETE` | `/files/:id` | Soft delete a file | Required |
 
 ### Users — Self Service
@@ -318,7 +383,39 @@ All endpoints are prefixed with `/api/v1`. Authentication is required unless mar
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
 | `GET` | `/health` | Basic health check | Public |
-| `GET` | `/health/detailed` | Detailed check (Mongo, Redis, Vault) | Required |
+| `GET` | `/health/detailed` | Detailed (Mongo, Redis, Vault) | Required |
+
+---
+
+## Architecture
+
+```
+src/
+├── main.ts                        # Bootstrap — Helmet, CORS, Swagger, Pipes, Filters
+├── app.module.ts                  # Root module wiring + super admin seed
+├── config/                        # Environment config (Zod-validated)
+├── common/                        # Shared filters, interceptors, DTOs
+├── shared/                        # Logger, constants, crypto/file utils
+└── modules/
+    ├── auth/                      # JWT auth, strategies, guards, decorators
+    ├── users/                     # User CRUD, schema, password management
+    ├── admin/                     # Admin user management, audit viewing
+    ├── files/                     # File upload/download with encryption
+    ├── permissions/               # RBAC roles, hierarchy, permissions
+    ├── encryption/                # AES-256-GCM envelope encryption
+    ├── vault/                     # HashiCorp Vault integration
+    ├── storage/                   # Storage abstraction (local, S3-ready)
+    ├── audit/                     # Audit logging with structured events
+    ├── queue/                     # Background processors (audit, files)
+    ├── health/                    # Health check endpoints
+    ├── redis/                     # Global Redis client provider
+    ├── database/                  # MongoDB connection module
+    ├── devices/                   # Device trust management
+    ├── certificates/              # X.509 certificate operations
+    ├── setup/                     # Device enrollment (SetupApp)
+    ├── sessions/                  # Session management
+    └── shares/                    # File sharing
+```
 
 ---
 
@@ -333,23 +430,22 @@ All endpoints are prefixed with `/api/v1`. Authentication is required unless mar
 | **Refresh Token Storage** | SHA-256 hashed (never stored raw) |
 | **File Encryption** | AES-256-GCM per-file DEKs |
 | **Key Management** | HashiCorp Vault-managed KEK (envelope encryption) |
+| **Device Trust** | X.509 client certificates via Vault PKI |
 | **Rate Limiting** | `@nestjs/throttler` — configurable per-endpoint |
 | **HTTP Headers** | Helmet security headers |
 | **CORS** | Configurable origin restrictions |
-| **Input Validation** | class-validator with whitelist mode (strips unknown fields) |
+| **Input Validation** | class-validator with whitelist mode |
 | **Account Lockout** | 5 failed attempts → 30 min lockout |
-| **Audit Trail** | All sensitive operations logged with user, IP, metadata |
+| **Audit Trail** | All sensitive operations logged |
 
 ---
 
 ## Role Hierarchy (RBAC)
 
-The system uses a 5-tier role hierarchy. Higher roles inherit all permissions of lower roles.
-
 ```
 SUPER_ADMIN (100)  ──  Full system access, can change roles
       │
-   ADMIN (80)      ──  User management, audit logs
+   ADMIN (80)      ──  User management, audit logs, device approval
       │
   MANAGER (60)     ──  Team-level management
       │
@@ -362,15 +458,11 @@ SUPER_ADMIN (100)  ──  Full system access, can change roles
 
 ## Environment Variables
 
-See [`.env.example`](.env.example) for the full list. Key variables:
+See [`.env.example`](.env.example) for the complete template. Key variables:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `NODE_ENV` | No | `development` | `development`, `production`, or `test` |
-| `APP_PORT` | No | `3000` | Server port |
 | `MONGODB_URI` | **Yes** | — | MongoDB connection string |
-| `REDIS_HOST` | No | `localhost` | Redis host |
-| `REDIS_PASSWORD` | No | — | Redis password |
 | `JWT_ACCESS_SECRET` | **Yes** | — | Min 32 chars |
 | `JWT_REFRESH_SECRET` | **Yes** | — | Min 32 chars |
 | `VAULT_ENABLED` | No | `false` | Enable HashiCorp Vault |
@@ -380,134 +472,83 @@ See [`.env.example`](.env.example) for the full list. Key variables:
 
 ---
 
-## All Available Scripts
+## Scripts
 
 ```bash
-# ─── Development ──────────────────────────────────
-npm run start:dev          # Start with hot-reload (watch mode)
-npm run start:debug        # Start with debugger + hot-reload
-npm run start              # Start without hot-reload
+# Development
+npm run start:dev          # Hot-reload (watch mode)
+npm run start:debug        # Debugger + hot-reload
+npm run start              # No hot-reload
 
-# ─── Production ───────────────────────────────────
+# Production
 npm run build              # Compile TypeScript → dist/
 npm run start:prod         # Run compiled dist/main.js
 
-# ─── Code Quality ────────────────────────────────
-npm run lint               # Run ESLint with auto-fix
-npm run format             # Format code with Prettier
+# Code Quality
+npm run lint               # ESLint with auto-fix
+npm run format             # Prettier formatting
 
-# ─── Testing ─────────────────────────────────────
-npm run test               # Run unit tests
-npm run test:watch         # Run tests in watch mode
-npm run test:cov           # Run tests with coverage report
-npm run test:debug         # Run tests with debugger
-npm run test:e2e           # Run end-to-end tests
+# Testing
+npm run test               # Unit tests
+npm run test:watch         # Watch mode
+npm run test:cov           # Coverage report
+npm run test:e2e           # End-to-end tests
 
-# ─── Docker (Infrastructure) ─────────────────────
+# Infrastructure
 docker compose up -d       # Start MongoDB, Redis, Vault
 docker compose down        # Stop services
-docker compose down -v     # Stop + remove all data
-docker compose logs -f     # Stream all logs
-docker compose ps          # Check service status
-```
-
----
-
-## Project Structure
-
-```
-securevault-backend/
-├── src/                           # Application source code
-│   ├── main.ts                    # Entry point — bootstraps NestJS app
-│   ├── app.module.ts              # Root module — wires everything together
-│   ├── config/                    # Config loaders + Zod env validation
-│   ├── common/                    # Shared filters, interceptors, DTOs
-│   ├── shared/                    # Logger, constants, utility functions
-│   └── modules/                   # Feature modules (13 total)
-│       ├── auth/                  # Authentication (JWT, Passport)
-│       ├── users/                 # User management
-│       ├── admin/                 # Admin endpoints
-│       ├── files/                 # File upload/download + encryption
-│       ├── permissions/           # RBAC roles + hierarchy
-│       ├── encryption/            # AES-256-GCM envelope encryption
-│       ├── vault/                 # HashiCorp Vault integration
-│       ├── storage/               # Storage abstraction layer
-│       ├── audit/                 # Audit logging
-│       ├── queue/                 # BullMQ background processors
-│       ├── health/                # Health check endpoints
-│       ├── redis/                 # Global Redis client
-│       └── database/              # MongoDB connection
-├── test/                          # E2E tests
-├── storage/                       # File storage (gitignored)
-│   ├── uploads/                   # Encrypted file storage
-│   └── temp/                      # Temporary processing directory
-├── logs/                          # Application logs (gitignored)
-├── dist/                          # Compiled output (gitignored)
-├── docker-compose.yml             # Dev infrastructure
-├── .env.example                   # Environment template
-├── .gitignore                     # Git ignore rules
-├── tsconfig.json                  # TypeScript configuration
-├── package.json                   # Dependencies + scripts
-└── README.md                      # This file
+docker compose down -v     # Stop + delete all data (clean reset)
 ```
 
 ---
 
 ## Troubleshooting
 
+### Environment validation error at startup
+
+The app validates all env vars at boot using Zod. Check the specific field in the error against `.env.example`.
+
+### JWT secrets too short
+
+Both `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` must be **≥ 32 characters**:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
 ### Docker containers won't start
 
 ```bash
-# Check if ports are already in use
-netstat -ano | findstr "27017 6379 8200"
+# Check if ports are in use
+sudo lsof -i :27017 -i :6379 -i :8200
 
-# Force recreate containers
+# Force recreate
 docker compose up -d --force-recreate
 ```
 
 ### MongoDB authentication failed
 
-Make sure the `MONGODB_URI` in `.env` matches the credentials in `docker-compose.yml`:
+Ensure `MONGODB_URI` matches `docker-compose.yml` credentials:
 
 ```env
-# Default docker-compose credentials:
 MONGODB_URI=mongodb://securevault_user:securevault_pass_dev@localhost:27017/securevault?authSource=admin
 ```
 
-### Redis connection failed
+### Vault PKI not working
 
-Verify the Redis password matches between `.env` and `docker-compose.yml`:
-
-```env
-REDIS_PASSWORD=securevault_redis_dev
-```
-
-### Environment validation error at startup
-
-The app validates all env vars at boot using Zod. If you see `❌ Environment validation failed`, check the specific field mentioned in the error against `.env.example`.
-
-### JWT secrets too short
-
-Both `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` must be at least **32 characters**. The app will refuse to start otherwise.
-
-### Vault connection issues
-
-If Vault isn't needed for local development, set:
-
-```env
-VAULT_ENABLED=false
-```
-
-### Permission errors on storage directories
-
-Make sure the `storage/uploads/`, `storage/temp/`, and `logs/` directories exist and are writable:
+Re-run the setup script (Vault dev mode loses data on restart):
 
 ```bash
-# Windows (PowerShell)
-mkdir -Force storage\uploads, storage\temp, logs
+npx ts-node scripts/setup-vault-pki.ts
+```
 
-# Linux / macOS
-mkdir -p storage/uploads storage/temp logs
+### Clean reset (start completely fresh)
+
+```bash
+docker compose down -v     # Destroy all data volumes
+docker compose up -d       # Recreate containers
+npx ts-node scripts/setup-vault-pki.ts  # Re-setup PKI
+npm run start:dev          # App re-seeds super admin
 ```
 
 ---

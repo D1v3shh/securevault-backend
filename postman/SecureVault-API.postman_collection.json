@@ -22,7 +22,9 @@
     { "key": "enrollment_token", "value": "" },
     { "key": "certificate_serial", "value": "" },
     { "key": "device_id", "value": "" },
-    { "key": "user_id", "value": "" }
+    { "key": "user_id", "value": "" },
+    { "key": "admin_email", "value": "admin@securevault.local" },
+    { "key": "admin_password", "value": "YourStrongPassword123!" }
   ],
   "item": [
     {
@@ -52,7 +54,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"kumavatdivesh671@gmail.com\",\n  \"password\": \"DiKu@671\"\n}"
+              "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}"
             }
           }
         },
