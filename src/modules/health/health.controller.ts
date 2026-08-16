@@ -1,5 +1,5 @@
 import { Controller, Get, Inject } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { InjectConnection } from '@nestjs/mongoose';
 import { Connection } from 'mongoose';
@@ -40,6 +40,7 @@ export class HealthController {
     };
   }
 
+  @ApiBearerAuth('access-token')
   @Get('detailed')
   @ApiOperation({ summary: 'Detailed health check (authenticated)' })
   async detailedHealthCheck() {

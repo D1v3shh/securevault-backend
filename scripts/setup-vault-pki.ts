@@ -142,7 +142,24 @@ async function setupVaultPki() {
       }),
     });
 
-    console.log('\n✅ Vault PKI setup complete!\n');
+    // 10. Enable Transit secrets engine
+    console.log('🔟  Enabling Transit secrets engine...');
+    await fetch(`${VAULT_ADDR}/v1/sys/mounts/transit`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        type: 'transit',
+      }),
+    });
+
+    // 11. Create securevault-key in Transit engine
+    console.log('1️⃣1️⃣  Creating encryption key "securevault-key"...');
+    await fetch(`${VAULT_ADDR}/v1/transit/keys/securevault-key`, {
+      method: 'POST',
+      headers,
+    });
+
+    console.log('\n✅ Vault PKI and Transit setup complete!\n');
     console.log('Summary:');
     console.log('  • Root CA: CN=SecureVault Root CA');
     console.log('  • Intermediate CA: CN=SecureVault Intermediate CA');
