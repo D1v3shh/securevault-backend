@@ -1,0 +1,81 @@
+# ~/securevault/docker-compose.prod.yml
+services:
+  securevault-backend:
+    image: d1v3shhh/securevault:latest # Pulls your code from Docker Hub
+    container_name: securevault-backend
+    restart: always
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env # We will create this next
+    depends_on:
+      - mongodb
+      - redis
+      - vault
+    networks:
+      - securevault-net
+    volumes:
+      - ./storage:/app/storage
+      - ./logs:/app/logs
+
+  # ─── MongoDB ──────────────────────────────────────────
+  mongodb:
+    image: mongo:7
+    container_name: securevault-mongo
+    restart: always
+    ports:
+      - "27017:27017" # You can remove this in production if you don't want DB accessible from outside
+    environment:
+      # These now pull from your production .env file!
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: securevault
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - securevault-net
+
+  # ─── Redis ────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: securevault-redis
+    restart: always
+    ports:
+      - "6379:6379" # You can remove this in production if you don't want Redis accessible from outside
+    # This pulls the password from your production .env file!
+    command: sh -c 'redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"'
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    networks:
+      - securevault-net
+
+  # ─── HashiCorp Vault ──────────────────────────────────
+  vault:
+    image: hashicorp/vault:1.15
+    container_name: securevault-vault
+    restart: always
+    ports:
+      - "8200:8200"
+    environment:
+      # In production, DO NOT use dev mode. We use a basic local config here to save data to disk.
+      VAULT_LOCAL_CONFIG: '{"storage": {"file": {"path": "/vault/file"}}, "listener": [{"tcp": { "address": "0.0.0.0:8200", "tls_disable": 1}}], "ui": true}'
+    cap_add:
+      - IPC_LOCK
+    volumes:
+      - vault_data:/vault/file
+    networks:
+      - securevault-net
+
+volumes:
+  mongodb_data:
+    driver: local
+  redis_data:
+    driver: local
+  vault_data:
+    driver: local
+
+networks:
+  securevault-net:
+    driver: bridge
