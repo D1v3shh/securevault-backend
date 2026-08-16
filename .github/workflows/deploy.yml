@@ -1,81 +1,66 @@
-# ~/securevault/docker-compose.prod.yml
-services:
-  securevault-backend:
-    image: d1v3shhh/securevault:latest # Pulls your code from Docker Hub
-    container_name: securevault-backend
-    restart: always
-    ports:
-      - "3000:3000"
-    env_file:
-      - .env # We will create this next
-    depends_on:
-      - mongodb
-      - redis
-      - vault
-    networks:
-      - securevault-net
-    volumes:
-      - ./storage:/app/storage
-      - ./logs:/app/logs
+name: CI/CD Pipeline
 
-  # ─── MongoDB ──────────────────────────────────────────
-  mongodb:
-    image: mongo:7
-    container_name: securevault-mongo
-    restart: always
-    ports:
-      - "27017:27017" # You can remove this in production if you don't want DB accessible from outside
-    environment:
-      # These now pull from your production .env file!
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
-      MONGO_INITDB_DATABASE: securevault
-    volumes:
-      - mongodb_data:/data/db
-    networks:
-      - securevault-net
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
-  # ─── Redis ────────────────────────────────────────────
-  redis:
-    image: redis:7-alpine
-    container_name: securevault-redis
-    restart: always
-    ports:
-      - "6379:6379" # You can remove this in production if you don't want Redis accessible from outside
-    # This pulls the password from your production .env file!
-    command: sh -c 'redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"'
-    environment:
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-    volumes:
-      - redis_data:/data
-    networks:
-      - securevault-net
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install Dependencies
+        run: npm ci
+        
+      - name: Run Linter
+        run: npm run lint
+        
+      - name: Run Tests
+        run: npm run test
 
-  # ─── HashiCorp Vault ──────────────────────────────────
-  vault:
-    image: hashicorp/vault:1.15
-    container_name: securevault-vault
-    restart: always
-    ports:
-      - "8200:8200"
-    environment:
-      # In production, DO NOT use dev mode. We use a basic local config here to save data to disk.
-      VAULT_LOCAL_CONFIG: '{"storage": {"file": {"path": "/vault/file"}}, "listener": [{"tcp": { "address": "0.0.0.0:8200", "tls_disable": 1}}], "ui": true}'
-    cap_add:
-      - IPC_LOCK
-    volumes:
-      - vault_data:/vault/file
-    networks:
-      - securevault-net
+  build-and-push-docker:
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/securevault:latest
 
-volumes:
-  mongodb_data:
-    driver: local
-  redis_data:
-    driver: local
-  vault_data:
-    driver: local
-
-networks:
-  securevault-net:
-    driver: bridge
+  deploy-to-server:
+    needs: build-and-push-docker
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            cd ~/securevault
+            # Pull the newest image
+            docker-compose -f docker-compose.prod.yml pull securevault-backend
+            # Restart the container with the new image
+            docker-compose -f docker-compose.prod.yml up -d --no-deps securevault-backend
+            # Clean up old unused images
+            docker image prune -f
