@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { PermissionEntity, PermissionDocument } from './schemas/permission.schema';
+import {
+  PermissionEntity,
+  PermissionDocument,
+} from './schemas/permission.schema';
 import { Role } from './constants/roles.enum';
 import { Permission, ROLE_PERMISSIONS } from './constants/permissions.enum';
 

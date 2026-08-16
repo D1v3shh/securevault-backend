@@ -89,17 +89,23 @@ const createMockModel = () => {
       return doc;
     }),
     findOne: jest.fn().mockImplementation(async (filter) => {
-      return shareStore.find((s) => {
-        if (filter.status && s.status !== filter.status) return false;
-        if (filter.fileId && s.fileId?.toString() !== filter.fileId?.toString())
-          return false;
-        if (
-          filter.sharedWithUserId &&
-          s.sharedWithUserId?.toString() !== filter.sharedWithUserId?.toString()
-        )
-          return false;
-        return true;
-      }) ?? null;
+      return (
+        shareStore.find((s) => {
+          if (filter.status && s.status !== filter.status) return false;
+          if (
+            filter.fileId &&
+            s.fileId?.toString() !== filter.fileId?.toString()
+          )
+            return false;
+          if (
+            filter.sharedWithUserId &&
+            s.sharedWithUserId?.toString() !==
+              filter.sharedWithUserId?.toString()
+          )
+            return false;
+          return true;
+        }) ?? null
+      );
     }),
     findById: jest.fn().mockImplementation(async (id) => {
       return shareStore.find((s) => s._id.toString() === id.toString()) ?? null;

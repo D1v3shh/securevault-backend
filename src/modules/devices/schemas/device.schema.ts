@@ -29,7 +29,12 @@ export class DeviceEntity {
   @Prop({ type: String, default: () => uuidv4(), unique: true, index: true })
   deviceId: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'UserEntity', required: true, index: true })
+  @Prop({
+    type: Types.ObjectId,
+    ref: 'UserEntity',
+    required: true,
+    index: true,
+  })
   userId: Types.ObjectId;
 
   @Prop({ required: true, index: true })

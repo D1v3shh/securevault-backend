@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { AuditLogEntity, AuditLogDocument } from '../../audit/schemas/audit-log.schema';
+import {
+  AuditLogEntity,
+  AuditLogDocument,
+} from '../../audit/schemas/audit-log.schema';
 import type { AuditEventData } from '../../audit/interfaces/audit.interface';
 
 /**
@@ -69,7 +72,9 @@ export class AuditProcessor {
       }));
 
       await this.auditLogModel.insertMany(documents, { ordered: false });
-      this.logger.debug(`Batch audit events processed: ${events.length} events`);
+      this.logger.debug(
+        `Batch audit events processed: ${events.length} events`,
+      );
     } catch (error: any) {
       this.logger.error(`Failed to process audit batch: ${error.message}`);
     }

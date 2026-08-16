@@ -1,5 +1,9 @@
 import {
-  IsString, IsNotEmpty, IsOptional, IsEnum, MaxLength,
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsEnum,
+  MaxLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { DeviceStatus } from '../schemas/device.schema';

@@ -2,7 +2,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { ShareService } from '../services/share.service';
-import { FileAccessEntity, FileAccessDocument } from '../schemas/file-access.schema';
+import {
+  FileAccessEntity,
+  FileAccessDocument,
+} from '../schemas/file-access.schema';
 import { FileEntity, FileDocument } from '../../files/schemas/file.schema';
 import { UserEntity, UserDocument } from '../../users/schemas/user.schema';
 import { AuditService } from '../../audit/audit.service';
@@ -91,7 +94,10 @@ describe('ShareService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ShareService,
-        { provide: getModelToken(FileAccessEntity.name), useValue: fileAccessModel },
+        {
+          provide: getModelToken(FileAccessEntity.name),
+          useValue: fileAccessModel,
+        },
         { provide: getModelToken(FileEntity.name), useValue: fileModel },
         { provide: getModelToken(UserEntity.name), useValue: userModel },
         { provide: AuditService, useValue: auditService },
@@ -148,7 +154,10 @@ describe('ShareService', () => {
     });
 
     it('should throw if requesting user is not the file owner', async () => {
-      const nonOwnerUser = { ...mockUser, userId: new Types.ObjectId().toString() };
+      const nonOwnerUser = {
+        ...mockUser,
+        userId: new Types.ObjectId().toString(),
+      };
       fileModel.findOne.mockResolvedValue(mockFile);
 
       await expect(
@@ -167,7 +176,10 @@ describe('ShareService', () => {
 
     it('should throw if target user is inactive', async () => {
       fileModel.findOne.mockResolvedValue(mockFile);
-      userModel.findById.mockResolvedValue({ ...mockTargetUser, isActive: false });
+      userModel.findById.mockResolvedValue({
+        ...mockTargetUser,
+        isActive: false,
+      });
 
       await expect(
         service.shareFile(validDto, mockUser, '127.0.0.1'),
@@ -246,11 +258,18 @@ describe('ShareService', () => {
     });
 
     it('should throw if non-owner tries to revoke', async () => {
-      const otherUser = { ...mockUser, userId: new Types.ObjectId().toString() };
+      const otherUser = {
+        ...mockUser,
+        userId: new Types.ObjectId().toString(),
+      };
       fileAccessModel.findById.mockResolvedValue(mockShareDoc);
 
       await expect(
-        service.revokeShare(mockShareDoc._id.toString(), otherUser, '127.0.0.1'),
+        service.revokeShare(
+          mockShareDoc._id.toString(),
+          otherUser,
+          '127.0.0.1',
+        ),
       ).rejects.toThrow(AccessDeniedException);
     });
 
@@ -335,7 +354,10 @@ describe('ShareService', () => {
     });
 
     it('should throw if user is neither owner nor shared-with', async () => {
-      const otherUser = { ...mockUser, userId: new Types.ObjectId().toString() };
+      const otherUser = {
+        ...mockUser,
+        userId: new Types.ObjectId().toString(),
+      };
       const shareWithPopulated = {
         ...mockShareDoc,
         ownerId: { _id: mockOwnerId },

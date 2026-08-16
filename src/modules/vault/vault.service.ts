@@ -24,12 +24,27 @@ export class VaultService implements IVaultProvider, OnModuleInit {
 
   constructor(private readonly configService: ConfigService) {
     this.enabled = this.configService.get<boolean>('vault.enabled', false);
-    this.address = this.configService.get<string>('vault.address', 'http://localhost:8200');
+    this.address = this.configService.get<string>(
+      'vault.address',
+      'http://localhost:8200',
+    );
     this.token = this.configService.get<string>('vault.token', '');
-    this.mountPath = this.configService.get<string>('vault.mountPath', 'secret');
-    this.secretsPath = this.configService.get<string>('vault.secretsPath', 'securevault');
-    this.retryAttempts = this.configService.get<number>('vault.retryAttempts', 3);
-    this.retryDelayMs = this.configService.get<number>('vault.retryDelayMs', 1000);
+    this.mountPath = this.configService.get<string>(
+      'vault.mountPath',
+      'secret',
+    );
+    this.secretsPath = this.configService.get<string>(
+      'vault.secretsPath',
+      'securevault',
+    );
+    this.retryAttempts = this.configService.get<number>(
+      'vault.retryAttempts',
+      3,
+    );
+    this.retryDelayMs = this.configService.get<number>(
+      'vault.retryDelayMs',
+      1000,
+    );
   }
 
   async onModuleInit(): Promise<void> {
@@ -38,7 +53,7 @@ export class VaultService implements IVaultProvider, OnModuleInit {
     } else {
       this.logger.warn(
         'Vault is DISABLED. Using environment variables for secrets. ' +
-        'This is acceptable for development only.',
+          'This is acceptable for development only.',
       );
     }
   }
@@ -51,7 +66,9 @@ export class VaultService implements IVaultProvider, OnModuleInit {
 
     for (let attempt = 1; attempt <= this.retryAttempts; attempt++) {
       try {
-        this.logger.log(`Connecting to Vault at ${this.address} (attempt ${attempt}/${this.retryAttempts})`);
+        this.logger.log(
+          `Connecting to Vault at ${this.address} (attempt ${attempt}/${this.retryAttempts})`,
+        );
 
         // Dynamic import to avoid hard dependency when Vault is disabled
         const vault = require('node-vault');
@@ -64,7 +81,9 @@ export class VaultService implements IVaultProvider, OnModuleInit {
         // Verify connection with health check
         const health = await this.client.health();
         this.initialized = true;
-        this.logger.log(`✅ Vault connected successfully. Sealed: ${health.sealed}`);
+        this.logger.log(
+          `✅ Vault connected successfully. Sealed: ${health.sealed}`,
+        );
         return;
       } catch (error: any) {
         this.logger.error(
@@ -79,7 +98,7 @@ export class VaultService implements IVaultProvider, OnModuleInit {
 
     this.logger.error(
       `Failed to connect to Vault after ${this.retryAttempts} attempts. ` +
-      'Falling back to environment variables.',
+        'Falling back to environment variables.',
     );
   }
 
@@ -88,7 +107,9 @@ export class VaultService implements IVaultProvider, OnModuleInit {
    */
   async readSecret(path: string): Promise<Record<string, any> | null> {
     if (!this.enabled || !this.client) {
-      this.logger.debug(`Vault disabled — readSecret('${path}') returning null`);
+      this.logger.debug(
+        `Vault disabled — readSecret('${path}') returning null`,
+      );
       return null;
     }
 
@@ -120,7 +141,9 @@ export class VaultService implements IVaultProvider, OnModuleInit {
       await this.client.write(fullPath, { data });
       this.logger.debug(`Secret written to path: ${path}`);
     } catch (error: any) {
-      this.logger.error(`Failed to write secret at '${path}': ${error.message}`);
+      this.logger.error(
+        `Failed to write secret at '${path}': ${error.message}`,
+      );
       throw error;
     }
   }
@@ -139,7 +162,9 @@ export class VaultService implements IVaultProvider, OnModuleInit {
       await this.client.delete(fullPath);
       this.logger.debug(`Secret deleted at path: ${path}`);
     } catch (error: any) {
-      this.logger.error(`Failed to delete secret at '${path}': ${error.message}`);
+      this.logger.error(
+        `Failed to delete secret at '${path}': ${error.message}`,
+      );
       throw error;
     }
   }
@@ -175,7 +200,9 @@ export class VaultService implements IVaultProvider, OnModuleInit {
       });
       return result.data.ciphertext;
     } catch (error: any) {
-      this.logger.error(`Transit encrypt failed for key '${keyName}': ${error.message}`);
+      this.logger.error(
+        `Transit encrypt failed for key '${keyName}': ${error.message}`,
+      );
       throw error;
     }
   }
@@ -194,7 +221,9 @@ export class VaultService implements IVaultProvider, OnModuleInit {
       });
       return Buffer.from(result.data.plaintext, 'base64').toString('utf8');
     } catch (error: any) {
-      this.logger.error(`Transit decrypt failed for key '${keyName}': ${error.message}`);
+      this.logger.error(
+        `Transit decrypt failed for key '${keyName}': ${error.message}`,
+      );
       throw error;
     }
   }
@@ -202,19 +231,26 @@ export class VaultService implements IVaultProvider, OnModuleInit {
   /**
    * Generate a data key via Transit engine (envelope encryption).
    */
-  async generateDataKey(keyName: string): Promise<{ plaintext: string; ciphertext: string }> {
+  async generateDataKey(
+    keyName: string,
+  ): Promise<{ plaintext: string; ciphertext: string }> {
     if (!this.enabled || !this.client) {
       throw new Error('Vault transit engine not available');
     }
 
     try {
-      const result = await this.client.write(`transit/datakey/plaintext/${keyName}`, {});
+      const result = await this.client.write(
+        `transit/datakey/plaintext/${keyName}`,
+        {},
+      );
       return {
         plaintext: result.data.plaintext,
         ciphertext: result.data.ciphertext,
       };
     } catch (error: any) {
-      this.logger.error(`Data key generation failed for '${keyName}': ${error.message}`);
+      this.logger.error(
+        `Data key generation failed for '${keyName}': ${error.message}`,
+      );
       throw error;
     }
   }
@@ -231,7 +267,9 @@ export class VaultService implements IVaultProvider, OnModuleInit {
       await this.client.write(`transit/keys/${keyName}/rotate`, {});
       this.logger.log(`Encryption key '${keyName}' rotated successfully`);
     } catch (error: any) {
-      this.logger.error(`Key rotation failed for '${keyName}': ${error.message}`);
+      this.logger.error(
+        `Key rotation failed for '${keyName}': ${error.message}`,
+      );
       throw error;
     }
   }

@@ -1,5 +1,9 @@
 import {
-  IsString, IsNotEmpty, IsOptional, IsEnum, MaxLength,
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsEnum,
+  MaxLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -70,8 +74,12 @@ export class RevokeCertificateDto {
     example: 'key_compromise',
     description: 'Reason for revocation per RFC 5280',
     enum: [
-      'unspecified', 'key_compromise', 'ca_compromise',
-      'affiliation_changed', 'superseded', 'cessation_of_operation',
+      'unspecified',
+      'key_compromise',
+      'ca_compromise',
+      'affiliation_changed',
+      'superseded',
+      'cessation_of_operation',
       'privilege_withdrawn',
     ],
   })

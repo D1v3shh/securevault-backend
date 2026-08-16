@@ -1,5 +1,11 @@
 import {
-  Controller, Get, Patch, Body, Req, HttpCode, HttpStatus,
+  Controller,
+  Get,
+  Patch,
+  Body,
+  Req,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { UsersService } from './users.service';
@@ -51,7 +57,10 @@ export class UsersController {
     if (dto.lastName) allowedUpdate.lastName = dto.lastName;
     if (dto.jobTitle) allowedUpdate.jobTitle = dto.jobTitle;
 
-    const updated = await this.usersService.updateUser(user.userId, allowedUpdate);
+    const updated = await this.usersService.updateUser(
+      user.userId,
+      allowedUpdate,
+    );
     return {
       id: updated._id,
       uuid: updated.uuid,

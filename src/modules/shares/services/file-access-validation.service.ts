@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { FileAccessEntity, FileAccessDocument } from '../schemas/file-access.schema';
+import {
+  FileAccessEntity,
+  FileAccessDocument,
+} from '../schemas/file-access.schema';
 import { ShareStatus } from '../enums/share-status.enum';
 import {
   SharePermission,
@@ -61,7 +64,12 @@ export class FileAccessValidationService {
       this.logger.warn(
         `Access denied: No active share found for file=${fileId}, user=${userId}`,
       );
-      await this.logAccessDenied(fileId, userId, action, 'No active share record');
+      await this.logAccessDenied(
+        fileId,
+        userId,
+        action,
+        'No active share record',
+      );
       throw new AccessDeniedException();
     }
 
@@ -115,17 +123,30 @@ export class FileAccessValidationService {
       this.logger.warn(
         `Download limit reached: shareId=${share._id}, count=${share.downloadCount}/${share.maxDownloads}`,
       );
-      await this.logAccessDenied(fileId, userId, action, 'Download limit reached');
+      await this.logAccessDenied(
+        fileId,
+        userId,
+        action,
+        'Download limit reached',
+      );
       throw new AccessDeniedException('Download limit reached');
     }
 
     // Device certificate restriction
     if (share.allowedDeviceCertificateId) {
-      if (!deviceCertificateId || deviceCertificateId !== share.allowedDeviceCertificateId) {
+      if (
+        !deviceCertificateId ||
+        deviceCertificateId !== share.allowedDeviceCertificateId
+      ) {
         this.logger.warn(
           `Device restriction: shareId=${share._id}, expected=${share.allowedDeviceCertificateId}, got=${deviceCertificateId}`,
         );
-        await this.logAccessDenied(fileId, userId, action, 'Device certificate mismatch');
+        await this.logAccessDenied(
+          fileId,
+          userId,
+          action,
+          'Device certificate mismatch',
+        );
         throw new AccessDeniedException('Device not authorized for this share');
       }
     }
@@ -146,13 +167,20 @@ export class FileAccessValidationService {
     // One-time access: revoke after first access
     if (share.oneTimeAccess) {
       share.status = ShareStatus.REVOKED;
-      this.logger.log(`One-time access share revoked after download: shareId=${shareId}`);
+      this.logger.log(
+        `One-time access share revoked after download: shareId=${shareId}`,
+      );
     }
 
     // Download limit reached: mark as expired
-    if (share.maxDownloads !== null && share.downloadCount >= share.maxDownloads) {
+    if (
+      share.maxDownloads !== null &&
+      share.downloadCount >= share.maxDownloads
+    ) {
       share.status = ShareStatus.EXPIRED;
-      this.logger.log(`Download limit reached, share expired: shareId=${shareId}`);
+      this.logger.log(
+        `Download limit reached, share expired: shareId=${shareId}`,
+      );
     }
 
     await share.save();

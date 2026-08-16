@@ -24,7 +24,8 @@ export class ShareMapper {
       maxDownloads: doc.maxDownloads,
       oneTimeAccess: doc.oneTimeAccess,
       watermarkEnabled: doc.watermarkEnabled,
-      createdAt: (doc as any).createdAt?.toISOString() ?? doc.sharedAt.toISOString(),
+      createdAt:
+        (doc as any).createdAt?.toISOString() ?? doc.sharedAt.toISOString(),
     };
   }
 

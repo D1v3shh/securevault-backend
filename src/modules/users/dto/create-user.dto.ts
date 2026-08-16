@@ -1,6 +1,11 @@
 import {
-  IsEmail, IsString, IsNotEmpty, MinLength, MaxLength,
-  IsEnum, IsOptional,
+  IsEmail,
+  IsString,
+  IsNotEmpty,
+  MinLength,
+  MaxLength,
+  IsEnum,
+  IsOptional,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Role } from '../../permissions/constants/roles.enum';
@@ -45,7 +50,9 @@ export class CreateUserDto {
   @MaxLength(100)
   jobTitle?: string;
 
-  @ApiPropertyOptional({ description: 'Temporary password. Auto-generated if not provided.' })
+  @ApiPropertyOptional({
+    description: 'Temporary password. Auto-generated if not provided.',
+  })
   @IsOptional()
   @IsString()
   @MinLength(8)

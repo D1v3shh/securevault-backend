@@ -72,8 +72,5 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     Permission.FILE_DELETE,
     Permission.FILE_SHARE,
   ],
-  VIEWER: [
-    Permission.FILE_DOWNLOAD,
-    Permission.FILE_READ,
-  ],
+  VIEWER: [Permission.FILE_DOWNLOAD, Permission.FILE_READ],
 };

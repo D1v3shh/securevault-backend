@@ -27,12 +27,16 @@ export class AppLoggerService implements NestLoggerService {
       : winston.format.combine(
           ...formats,
           winston.format.colorize({ all: true }),
-          winston.format.printf(({ timestamp, level, message, context, trace, ...meta }) => {
-            const ctx = context ? `[${context}]` : '';
-            const metaStr = Object.keys(meta).length ? ` ${JSON.stringify(meta)}` : '';
-            const traceStr = trace ? `\n${trace}` : '';
-            return `${timestamp} ${level} ${ctx} ${message}${metaStr}${traceStr}`;
-          }),
+          winston.format.printf(
+            ({ timestamp, level, message, context, trace, ...meta }) => {
+              const ctx = context ? `[${context}]` : '';
+              const metaStr = Object.keys(meta).length
+                ? ` ${JSON.stringify(meta)}`
+                : '';
+              const traceStr = trace ? `\n${trace}` : '';
+              return `${timestamp} ${level} ${ctx} ${message}${metaStr}${traceStr}`;
+            },
+          ),
         );
 
     const transports: winston.transport[] = [

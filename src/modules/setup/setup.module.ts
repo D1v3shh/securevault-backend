@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { EnrollmentTokenEntity, EnrollmentTokenSchema } from './schemas/enrollment-token.schema';
+import {
+  EnrollmentTokenEntity,
+  EnrollmentTokenSchema,
+} from './schemas/enrollment-token.schema';
 import { SetupService } from './setup.service';
 import { SetupController } from './setup.controller';
 import { DevicesModule } from '../devices/devices.module';

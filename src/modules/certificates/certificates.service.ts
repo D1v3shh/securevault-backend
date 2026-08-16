@@ -1,14 +1,21 @@
 import {
-  Injectable, Logger, NotFoundException, BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import {
-  CertificateEntity, CertificateDocument, CertificateStatus,
+  CertificateEntity,
+  CertificateDocument,
+  CertificateStatus,
 } from './schemas/certificate.schema';
 import {
-  CertificateRevocationEntity, CertificateRevocationDocument, RevocationReason,
+  CertificateRevocationEntity,
+  CertificateRevocationDocument,
+  RevocationReason,
 } from './schemas/certificate-revocation.schema';
 import { VaultPkiService } from '../vault/vault-pki.service';
 import { DevicesService } from '../devices/devices.service';
@@ -65,7 +72,9 @@ export class CertificatesService {
     const validTo = new Date(signResult.expiration * 1000);
 
     // Compute certificate fingerprint
-    const certFingerprint = CertificateUtil.computeFingerprint(signResult.certificate);
+    const certFingerprint = CertificateUtil.computeFingerprint(
+      signResult.certificate,
+    );
 
     // Store certificate metadata in MongoDB
     await this.certificateModel.create({
@@ -85,7 +94,10 @@ export class CertificatesService {
     });
 
     // Bind certificate to device
-    await this.devicesService.bindCertificate(params.deviceId, signResult.serialNumber);
+    await this.devicesService.bindCertificate(
+      params.deviceId,
+      signResult.serialNumber,
+    );
 
     this.logger.log(
       `Certificate issued: serial=${signResult.serialNumber} for ${params.employeeId}/${params.deviceId}`,
@@ -118,40 +130,82 @@ export class CertificatesService {
   }> {
     // 1. Validate PEM format
     if (!CertificateUtil.isValidCertificatePem(certPem)) {
-      return { valid: false, serialNumber: '', employeeId: '', deviceId: '', userId: '', reason: 'Invalid certificate PEM format' };
+      return {
+        valid: false,
+        serialNumber: '',
+        employeeId: '',
+        deviceId: '',
+        userId: '',
+        reason: 'Invalid certificate PEM format',
+      };
     }
 
     // 2. Parse certificate
     const certInfo = CertificateUtil.parseCertificate(certPem);
     if (!certInfo) {
-      return { valid: false, serialNumber: '', employeeId: '', deviceId: '', userId: '', reason: 'Failed to parse certificate' };
+      return {
+        valid: false,
+        serialNumber: '',
+        employeeId: '',
+        deviceId: '',
+        userId: '',
+        reason: 'Failed to parse certificate',
+      };
     }
 
     // 3. Check expiry
     if (new Date() > certInfo.validTo) {
-      return { valid: false, serialNumber: certInfo.serialNumber, employeeId: '', deviceId: '', userId: '', reason: 'Certificate has expired' };
+      return {
+        valid: false,
+        serialNumber: certInfo.serialNumber,
+        employeeId: '',
+        deviceId: '',
+        userId: '',
+        reason: 'Certificate has expired',
+      };
     }
 
     if (new Date() < certInfo.validFrom) {
-      return { valid: false, serialNumber: certInfo.serialNumber, employeeId: '', deviceId: '', userId: '', reason: 'Certificate is not yet valid' };
+      return {
+        valid: false,
+        serialNumber: certInfo.serialNumber,
+        employeeId: '',
+        deviceId: '',
+        userId: '',
+        reason: 'Certificate is not yet valid',
+      };
     }
 
     // 4. Find certificate in our database
-    const normalizedSerial = CertificateUtil.normalizeSerialNumber(certInfo.serialNumber);
+    const normalizedSerial = CertificateUtil.normalizeSerialNumber(
+      certInfo.serialNumber,
+    );
     let storedCert = await this.certificateModel.findOne({
       serialNumber: certInfo.serialNumber,
     });
 
     // Try normalized lookup
     if (!storedCert) {
-      const allCerts = await this.certificateModel.find({ status: { $ne: CertificateStatus.REVOKED } });
-      storedCert = allCerts.find(c =>
-        CertificateUtil.normalizeSerialNumber(c.serialNumber) === normalizedSerial
-      ) || null;
+      const allCerts = await this.certificateModel.find({
+        status: { $ne: CertificateStatus.REVOKED },
+      });
+      storedCert =
+        allCerts.find(
+          (c) =>
+            CertificateUtil.normalizeSerialNumber(c.serialNumber) ===
+            normalizedSerial,
+        ) || null;
     }
 
     if (!storedCert) {
-      return { valid: false, serialNumber: certInfo.serialNumber, employeeId: '', deviceId: '', userId: '', reason: 'Certificate not found in trust store' };
+      return {
+        valid: false,
+        serialNumber: certInfo.serialNumber,
+        employeeId: '',
+        deviceId: '',
+        userId: '',
+        reason: 'Certificate not found in trust store',
+      };
     }
 
     // 5. Check revocation status
@@ -182,19 +236,25 @@ export class CertificatesService {
     }
 
     // 7. Verify device fingerprint if provided
-    if (deviceFingerprint && storedCert.deviceFingerprint !== deviceFingerprint) {
+    if (
+      deviceFingerprint &&
+      storedCert.deviceFingerprint !== deviceFingerprint
+    ) {
       return {
         valid: false,
         serialNumber: storedCert.serialNumber,
         employeeId: storedCert.employeeId,
         deviceId: storedCert.deviceId,
         userId: storedCert.userId.toString(),
-        reason: 'Device fingerprint mismatch — certificate not bound to this device',
+        reason:
+          'Device fingerprint mismatch — certificate not bound to this device',
       };
     }
 
     // 8. Check device approval status
-    const isTrusted = await this.devicesService.isDeviceTrusted(storedCert.deviceFingerprint);
+    const isTrusted = await this.devicesService.isDeviceTrusted(
+      storedCert.deviceFingerprint,
+    );
     if (!isTrusted) {
       return {
         valid: false,
@@ -221,12 +281,20 @@ export class CertificatesService {
 
     // 10. Verify certificate chain (if Vault PKI is enabled)
     try {
-      const intermediateCa = await this.vaultPkiService.getIntermediateCaCertificate();
-      if (CertificateUtil.isValidCertificatePem(intermediateCa) &&
-          CertificateUtil.isValidCertificatePem(certPem)) {
-        const chainValid = CertificateUtil.verifyCertificateChain(certPem, intermediateCa);
+      const intermediateCa =
+        await this.vaultPkiService.getIntermediateCaCertificate();
+      if (
+        CertificateUtil.isValidCertificatePem(intermediateCa) &&
+        CertificateUtil.isValidCertificatePem(certPem)
+      ) {
+        const chainValid = CertificateUtil.verifyCertificateChain(
+          certPem,
+          intermediateCa,
+        );
         if (!chainValid) {
-          this.logger.warn(`Certificate chain verification failed for serial: ${storedCert.serialNumber}`);
+          this.logger.warn(
+            `Certificate chain verification failed for serial: ${storedCert.serialNumber}`,
+          );
           // In dev mode, we allow this to pass since we use mock certs
           // In production, this should be a hard failure
         }
@@ -254,7 +322,8 @@ export class CertificatesService {
     ipAddress?: string,
   ): Promise<void> {
     const cert = await this.certificateModel.findOne({ serialNumber });
-    if (!cert) throw new NotFoundException(`Certificate not found: ${serialNumber}`);
+    if (!cert)
+      throw new NotFoundException(`Certificate not found: ${serialNumber}`);
 
     if (cert.status === CertificateStatus.REVOKED) {
       throw new BadRequestException('Certificate is already revoked');
@@ -264,7 +333,9 @@ export class CertificatesService {
     try {
       await this.vaultPkiService.revokeCertificate(serialNumber);
     } catch (error: any) {
-      this.logger.warn(`Vault PKI revocation failed (continuing with local revocation): ${error.message}`);
+      this.logger.warn(
+        `Vault PKI revocation failed (continuing with local revocation): ${error.message}`,
+      );
     }
 
     // Update certificate status
@@ -284,13 +355,17 @@ export class CertificatesService {
       ipAddress: ipAddress || null,
     });
 
-    this.logger.log(`Certificate revoked: ${serialNumber} by ${revokedBy} (reason: ${reason || 'unspecified'})`);
+    this.logger.log(
+      `Certificate revoked: ${serialNumber} by ${revokedBy} (reason: ${reason || 'unspecified'})`,
+    );
   }
 
   /**
    * Find certificate by serial number.
    */
-  async findBySerial(serialNumber: string): Promise<CertificateDocument | null> {
+  async findBySerial(
+    serialNumber: string,
+  ): Promise<CertificateDocument | null> {
     return this.certificateModel.findOne({ serialNumber });
   }
 
@@ -308,7 +383,8 @@ export class CertificatesService {
     revocationReason?: string;
   }> {
     const cert = await this.certificateModel.findOne({ serialNumber });
-    if (!cert) throw new NotFoundException(`Certificate not found: ${serialNumber}`);
+    if (!cert)
+      throw new NotFoundException(`Certificate not found: ${serialNumber}`);
 
     const now = new Date();
     return {
@@ -337,15 +413,20 @@ export class CertificatesService {
    * Find all certificates for a user.
    */
   async findByUserId(userId: string): Promise<CertificateDocument[]> {
-    return this.certificateModel.find({
-      userId: new Types.ObjectId(userId),
-    }).sort({ createdAt: -1 }).exec();
+    return this.certificateModel
+      .find({
+        userId: new Types.ObjectId(userId),
+      })
+      .sort({ createdAt: -1 })
+      .exec();
   }
 
   /**
    * Find active certificate for a device.
    */
-  async findActiveByDeviceId(deviceId: string): Promise<CertificateDocument | null> {
+  async findActiveByDeviceId(
+    deviceId: string,
+  ): Promise<CertificateDocument | null> {
     return this.certificateModel.findOne({
       deviceId,
       status: CertificateStatus.ACTIVE,

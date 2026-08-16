@@ -48,7 +48,9 @@ export class SessionsService {
       lastActivityAt: new Date(),
     });
 
-    this.logger.log(`Session created: ${session.sessionId} for user ${params.userId}`);
+    this.logger.log(
+      `Session created: ${session.sessionId} for user ${params.userId}`,
+    );
     return session;
   }
 
@@ -97,10 +99,13 @@ export class SessionsService {
    * Get active sessions for a user.
    */
   async getActiveSessions(userId: string): Promise<SessionDocument[]> {
-    return this.sessionModel.find({
-      userId: new Types.ObjectId(userId),
-      isActive: true,
-    }).sort({ lastActivityAt: -1 }).exec();
+    return this.sessionModel
+      .find({
+        userId: new Types.ObjectId(userId),
+        isActive: true,
+      })
+      .sort({ lastActivityAt: -1 })
+      .exec();
   }
 
   /**

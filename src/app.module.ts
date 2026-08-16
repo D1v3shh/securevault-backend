@@ -52,22 +52,9 @@ import { UsersService } from './modules/users/users.service';
 
       useFactory: (config: ConfigService) => [
         {
-          ttl:
-            parseInt(
-              config.get<string>(
-                'RATE_LIMIT_TTL',
-                '60',
-              ),
-              10,
-            ) * 1000,
+          ttl: parseInt(config.get<string>('RATE_LIMIT_TTL', '60'), 10) * 1000,
 
-          limit: parseInt(
-            config.get<string>(
-              'RATE_LIMIT_MAX',
-              '100',
-            ),
-            10,
-          ),
+          limit: parseInt(config.get<string>('RATE_LIMIT_MAX', '100'), 10),
         },
       ],
     }),
@@ -121,15 +108,13 @@ export class AppModule implements OnModuleInit {
   constructor(
     private readonly configService: ConfigService,
     private readonly usersService: UsersService,
-  ) { }
+  ) {}
 
   /**
    * Seed the super admin account on first startup.
    */
   async onModuleInit(): Promise<void> {
-    const email = this.configService.get<string>(
-      'SEED_SUPER_ADMIN_EMAIL',
-    );
+    const email = this.configService.get<string>('SEED_SUPER_ADMIN_EMAIL');
 
     const password = this.configService.get<string>(
       'SEED_SUPER_ADMIN_PASSWORD',

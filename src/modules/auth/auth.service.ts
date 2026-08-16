@@ -1,5 +1,9 @@
 import {
-  Injectable, Logger, UnauthorizedException, ForbiddenException, Inject,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+  ForbiddenException,
+  Inject,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -14,11 +18,17 @@ import { DevicesService } from '../devices/devices.service';
 import { SessionsService } from '../sessions/sessions.service';
 import { AuditService } from '../audit/audit.service';
 import { AuditAction } from '../audit/interfaces/audit.interface';
-import { RefreshTokenEntity, RefreshTokenDocument } from '../users/schemas/refresh-token.schema';
+import {
+  RefreshTokenEntity,
+  RefreshTokenDocument,
+} from '../users/schemas/refresh-token.schema';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { LoginDto } from './dto/login.dto';
 import { CertificateLoginDto } from '../certificates/dto/certificate.dto';
-import { ChangePasswordDto, ForceChangePasswordDto } from './dto/change-password.dto';
+import {
+  ChangePasswordDto,
+  ForceChangePasswordDto,
+} from './dto/change-password.dto';
 import { APP_CONSTANTS } from '../../shared/constants/app.constants';
 import { CryptoUtil } from '../../shared/utils/crypto.util';
 import { INJECTION_TOKENS } from '../../shared/constants/app.constants';
@@ -55,7 +65,9 @@ export class AuthService {
     }
 
     if (!user.isActive) {
-      throw new ForbiddenException('Account is deactivated. Contact your administrator.');
+      throw new ForbiddenException(
+        'Account is deactivated. Contact your administrator.',
+      );
     }
 
     // Check account lockout
@@ -66,9 +78,16 @@ export class AuthService {
     }
 
     // Verify password
-    const isPasswordValid = await bcrypt.compare(dto.password, user.passwordHash);
+    const isPasswordValid = await bcrypt.compare(
+      dto.password,
+      user.passwordHash,
+    );
     if (!isPasswordValid) {
-      await this.usersService.recordLoginAttempt(user._id.toString(), false, ip);
+      await this.usersService.recordLoginAttempt(
+        user._id.toString(),
+        false,
+        ip,
+      );
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -115,7 +134,11 @@ export class AuthService {
    * 4. Create session
    * 5. Log audit event
    */
-  async certificateLogin(dto: CertificateLoginDto, ip: string, userAgent: string) {
+  async certificateLogin(
+    dto: CertificateLoginDto,
+    ip: string,
+    userAgent: string,
+  ) {
     // 1. Verify the presented certificate
     const verification = await this.certificatesService.verifyCertificate(
       dto.certificate,
@@ -164,13 +187,17 @@ export class AuthService {
         });
       }
 
-      throw new UnauthorizedException(`Certificate authentication failed: ${verification.reason}`);
+      throw new UnauthorizedException(
+        `Certificate authentication failed: ${verification.reason}`,
+      );
     }
 
     // 2. Get user from certificate metadata
     const user = await this.usersService.findById(verification.userId);
     if (!user) {
-      throw new UnauthorizedException('User associated with certificate not found');
+      throw new UnauthorizedException(
+        'User associated with certificate not found',
+      );
     }
 
     if (!user.isActive) {
@@ -254,7 +281,10 @@ export class AuthService {
    */
   async refreshTokens(refreshToken: string, ip: string, userAgent: string) {
     // Find the stored refresh token (hash before lookup)
-    const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+    const tokenHash = crypto
+      .createHash('sha256')
+      .update(refreshToken)
+      .digest('hex');
     const storedToken = await this.refreshTokenModel.findOne({
       token: tokenHash,
       isRevoked: false,
@@ -273,7 +303,9 @@ export class AuthService {
     await storedToken.save();
 
     // Get user and generate new tokens
-    const user = await this.usersService.findById(storedToken.userId.toString());
+    const user = await this.usersService.findById(
+      storedToken.userId.toString(),
+    );
     if (!user || !user.isActive) {
       throw new UnauthorizedException('User not found or inactive');
     }
@@ -281,7 +313,12 @@ export class AuthService {
     const tokens = await this.generateTokens(user);
 
     // Store new refresh token
-    await this.storeRefreshToken(tokens.refreshToken, user._id.toString(), userAgent, ip);
+    await this.storeRefreshToken(
+      tokens.refreshToken,
+      user._id.toString(),
+      userAgent,
+      ip,
+    );
 
     return {
       accessToken: tokens.accessToken,
@@ -292,11 +329,15 @@ export class AuthService {
   /**
    * Logout — revoke refresh token and blacklist access token.
    */
-  async logout(userId: string, accessToken: string, refreshToken?: string): Promise<void> {
+  async logout(
+    userId: string,
+    accessToken: string,
+    refreshToken?: string,
+  ): Promise<void> {
     // Blacklist the access token in Redis
     if (accessToken) {
       try {
-        const decoded = this.jwtService.decode(accessToken) as JwtPayload;
+        const decoded = this.jwtService.decode(accessToken);
         if (decoded?.exp) {
           const ttl = decoded.exp - Math.floor(Date.now() / 1000);
           if (ttl > 0) {
@@ -307,12 +348,17 @@ export class AuthService {
             );
           }
         }
-      } catch { /* token already expired */ }
+      } catch {
+        /* token already expired */
+      }
     }
 
     // Revoke the refresh token
     if (refreshToken) {
-      const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+      const tokenHash = crypto
+        .createHash('sha256')
+        .update(refreshToken)
+        .digest('hex');
       await this.refreshTokenModel.updateOne(
         { token: tokenHash },
         { isRevoked: true },
@@ -334,16 +380,25 @@ export class AuthService {
     const user = await this.usersService.findById(userId);
     if (!user) throw new UnauthorizedException('User not found');
 
-    const isCurrentValid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+    const isCurrentValid = await bcrypt.compare(
+      dto.currentPassword,
+      user.passwordHash,
+    );
     if (!isCurrentValid) {
       throw new UnauthorizedException('Current password is incorrect');
     }
 
-    const newHash = await bcrypt.hash(dto.newPassword, APP_CONSTANTS.BCRYPT_SALT_ROUNDS);
+    const newHash = await bcrypt.hash(
+      dto.newPassword,
+      APP_CONSTANTS.BCRYPT_SALT_ROUNDS,
+    );
     await this.usersService.updatePassword(userId, newHash);
 
     // Revoke all refresh tokens (force re-login on all devices)
-    await this.refreshTokenModel.updateMany({ userId: user._id }, { isRevoked: true });
+    await this.refreshTokenModel.updateMany(
+      { userId: user._id },
+      { isRevoked: true },
+    );
 
     this.logger.log(`Password changed for user: ${user.email}`);
   }
@@ -351,7 +406,10 @@ export class AuthService {
   /**
    * Force change password on first login.
    */
-  async forceChangePassword(userId: string, dto: ForceChangePasswordDto): Promise<{ accessToken: string; refreshToken: string }> {
+  async forceChangePassword(
+    userId: string,
+    dto: ForceChangePasswordDto,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
     const user = await this.usersService.findById(userId);
     if (!user) throw new UnauthorizedException('User not found');
 
@@ -360,16 +418,25 @@ export class AuthService {
     }
 
     // Verify temp password
-    const isTempValid = await bcrypt.compare(dto.temporaryPassword, user.passwordHash);
+    const isTempValid = await bcrypt.compare(
+      dto.temporaryPassword,
+      user.passwordHash,
+    );
     if (!isTempValid) {
       throw new UnauthorizedException('Temporary password is incorrect');
     }
 
-    const newHash = await bcrypt.hash(dto.newPassword, APP_CONSTANTS.BCRYPT_SALT_ROUNDS);
+    const newHash = await bcrypt.hash(
+      dto.newPassword,
+      APP_CONSTANTS.BCRYPT_SALT_ROUNDS,
+    );
     await this.usersService.updatePassword(userId, newHash);
 
     // Revoke all old tokens
-    await this.refreshTokenModel.updateMany({ userId: user._id }, { isRevoked: true });
+    await this.refreshTokenModel.updateMany(
+      { userId: user._id },
+      { isRevoked: true },
+    );
 
     // Reload user and generate fresh tokens
     const updatedUser = await this.usersService.findById(userId);
@@ -380,13 +447,17 @@ export class AuthService {
    * Check if an access token is blacklisted.
    */
   async isTokenBlacklisted(token: string): Promise<boolean> {
-    const result = await this.redis.get(`${APP_CONSTANTS.TOKEN_BLACKLIST_PREFIX}${token}`);
+    const result = await this.redis.get(
+      `${APP_CONSTANTS.TOKEN_BLACKLIST_PREFIX}${token}`,
+    );
     return result !== null;
   }
 
   // ─── Private Helpers ──────────────────────────────────────
 
-  private async generateTokens(user: any): Promise<{ accessToken: string; refreshToken: string }> {
+  private async generateTokens(
+    user: any,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
     const accessPayload: JwtPayload = {
       sub: user._id.toString(),
       uuid: user.uuid,
@@ -406,11 +477,15 @@ export class AuthService {
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(accessPayload, {
         secret: this.configService.get<string>('jwt.accessSecret')!,
-        expiresIn: this.configService.get<string>('jwt.accessExpiration')! as any,
+        expiresIn: this.configService.get<string>(
+          'jwt.accessExpiration',
+        )! as any,
       }),
       this.jwtService.signAsync(refreshPayload, {
         secret: this.configService.get<string>('jwt.refreshSecret')!,
-        expiresIn: this.configService.get<string>('jwt.refreshExpiration')! as any,
+        expiresIn: this.configService.get<string>(
+          'jwt.refreshExpiration',
+        )! as any,
       }),
     ]);
 
@@ -418,9 +493,15 @@ export class AuthService {
   }
 
   private async storeRefreshToken(
-    token: string, userId: string, deviceInfo: string, ipAddress: string,
+    token: string,
+    userId: string,
+    deviceInfo: string,
+    ipAddress: string,
   ): Promise<void> {
-    const expiresIn = this.configService.get<string>('jwt.refreshExpiration', '7d');
+    const expiresIn = this.configService.get<string>(
+      'jwt.refreshExpiration',
+      '7d',
+    );
     const ms = this.parseExpiration(expiresIn);
 
     // Hash the token before storing (never store raw JWTs)
@@ -441,7 +522,10 @@ export class AuthService {
     const value = parseInt(match[1], 10);
     const unit = match[2];
     const multipliers: Record<string, number> = {
-      s: 1000, m: 60000, h: 3600000, d: 86400000,
+      s: 1000,
+      m: 60000,
+      h: 3600000,
+      d: 86400000,
     };
     return value * (multipliers[unit] || 86400000);
   }

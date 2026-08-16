@@ -1,5 +1,8 @@
 import {
-  Injectable, Logger, NotFoundException, ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { AuditService } from '../audit/audit.service';
@@ -12,6 +15,8 @@ import { UpdateUserDto } from '../users/dto/update-user.dto';
 import { QueryUsersDto } from '../users/dto/query-users.dto';
 import { CreateEnrollmentTokenDto } from './dto/admin.dto';
 import { Role, ROLE_HIERARCHY } from '../permissions/constants/roles.enum';
+import { PaginationDto } from '../../common/dto/pagination.dto';
+import { DeviceStatus } from '../devices/schemas/device.schema';
 
 @Injectable()
 export class AdminService {
@@ -77,7 +82,12 @@ export class AdminService {
     return user;
   }
 
-  async updateUser(id: string, dto: UpdateUserDto, admin: AuthenticatedUser, ip: string) {
+  async updateUser(
+    id: string,
+    dto: UpdateUserDto,
+    admin: AuthenticatedUser,
+    ip: string,
+  ) {
     const user = await this.usersService.updateUser(id, dto);
 
     await this.auditService.log({
@@ -151,7 +161,12 @@ export class AdminService {
     return result;
   }
 
-  async changeUserRole(id: string, role: Role, admin: AuthenticatedUser, ip: string) {
+  async changeUserRole(
+    id: string,
+    role: Role,
+    admin: AuthenticatedUser,
+    ip: string,
+  ) {
     // Only SUPER_ADMIN can change roles
     if (admin.role !== Role.SUPER_ADMIN) {
       throw new ForbiddenException('Only SUPER_ADMIN can change user roles');
@@ -205,13 +220,27 @@ export class AdminService {
   /**
    * List all registered devices with filters.
    */
-  async getDevices(query: any) {
+  async getDevices(
+    query: PaginationDto & {
+      status?: DeviceStatus;
+      employeeId?: string;
+      search?: string;
+    },
+  ) {
     return this.devicesService.findAll(query);
   }
 
   // ─── Audit Logs ───────────────────────────────────────
 
-  async getAuditLogs(query: any) {
+  async getAuditLogs(
+    query: PaginationDto & {
+      action?: string;
+      userId?: string;
+      resource?: string;
+      startDate?: Date;
+      endDate?: Date;
+    },
+  ) {
     return this.auditService.findAll(query);
   }
 
@@ -221,7 +250,7 @@ export class AdminService {
    * Validates that the admin has sufficient privileges for the target role.
    */
   private validateRoleChange(admin: AuthenticatedUser, targetRole: Role): void {
-    const adminLevel = ROLE_HIERARCHY[admin.role as Role] || 0;
+    const adminLevel = ROLE_HIERARCHY[admin.role] || 0;
     const targetLevel = ROLE_HIERARCHY[targetRole] || 0;
 
     if (targetLevel >= adminLevel) {

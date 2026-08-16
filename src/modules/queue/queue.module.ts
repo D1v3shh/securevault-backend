@@ -2,7 +2,10 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AuditProcessor } from './processors/audit.processor';
 import { FileProcessor } from './processors/file.processor';
-import { AuditLogEntity, AuditLogSchema } from '../audit/schemas/audit-log.schema';
+import {
+  AuditLogEntity,
+  AuditLogSchema,
+} from '../audit/schemas/audit-log.schema';
 import { FileEntity, FileSchema } from '../files/schemas/file.schema';
 import { StorageModule } from '../storage/storage.module';
 
@@ -24,13 +27,7 @@ import { StorageModule } from '../storage/storage.module';
     ]),
     StorageModule,
   ],
-  providers: [
-    AuditProcessor,
-    FileProcessor,
-  ],
-  exports: [
-    AuditProcessor,
-    FileProcessor,
-  ],
+  providers: [AuditProcessor, FileProcessor],
+  exports: [AuditProcessor, FileProcessor],
 })
 export class QueueModule {}

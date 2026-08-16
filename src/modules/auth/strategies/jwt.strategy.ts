@@ -4,8 +4,14 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 import Redis from 'ioredis';
-import { JwtPayload, AuthenticatedUser } from '../interfaces/jwt-payload.interface';
-import { APP_CONSTANTS, INJECTION_TOKENS } from '../../../shared/constants/app.constants';
+import {
+  JwtPayload,
+  AuthenticatedUser,
+} from '../interfaces/jwt-payload.interface';
+import {
+  APP_CONSTANTS,
+  INJECTION_TOKENS,
+} from '../../../shared/constants/app.constants';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
@@ -22,7 +28,10 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     });
   }
 
-  async validate(req: Request, payload: JwtPayload): Promise<AuthenticatedUser> {
+  async validate(
+    req: Request,
+    payload: JwtPayload,
+  ): Promise<AuthenticatedUser> {
     if (payload.type !== 'access') {
       throw new UnauthorizedException('Invalid token type');
     }

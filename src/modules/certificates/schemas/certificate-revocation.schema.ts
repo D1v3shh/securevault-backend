@@ -2,7 +2,8 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 
-export type CertificateRevocationDocument = CertificateRevocationEntity & Document;
+export type CertificateRevocationDocument = CertificateRevocationEntity &
+  Document;
 
 /**
  * Standard CRL revocation reasons per RFC 5280.
@@ -59,7 +60,9 @@ export class CertificateRevocationEntity {
   metadata: Record<string, any>;
 }
 
-export const CertificateRevocationSchema = SchemaFactory.createForClass(CertificateRevocationEntity);
+export const CertificateRevocationSchema = SchemaFactory.createForClass(
+  CertificateRevocationEntity,
+);
 
 // Index for fast revocation checking
 CertificateRevocationSchema.index({ certificateSerial: 1 });

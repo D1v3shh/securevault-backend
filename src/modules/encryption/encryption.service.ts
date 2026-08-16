@@ -1,8 +1,14 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
-import { IEncryptionProvider, EncryptionResult } from './interfaces/encryption-provider.interface';
-import { IKeyManagementProvider, GeneratedKey } from './interfaces/key-management-provider.interface';
+import {
+  IEncryptionProvider,
+  EncryptionResult,
+} from './interfaces/encryption-provider.interface';
+import {
+  IKeyManagementProvider,
+  GeneratedKey,
+} from './interfaces/key-management-provider.interface';
 import { VaultService } from '../vault/vault.service';
 import { APP_CONSTANTS } from '../../shared/constants/app.constants';
 import { CryptoUtil } from '../../shared/utils/crypto.util';
@@ -18,7 +24,9 @@ import { CryptoUtil } from '../../shared/utils/crypto.util';
  * This service implements both IEncryptionProvider and IKeyManagementProvider.
  */
 @Injectable()
-export class EncryptionService implements IEncryptionProvider, IKeyManagementProvider, OnModuleInit {
+export class EncryptionService
+  implements IEncryptionProvider, IKeyManagementProvider, OnModuleInit
+{
   private readonly logger = new Logger(EncryptionService.name);
   private readonly algorithm: string;
   private readonly keyLength: number;
@@ -30,10 +38,22 @@ export class EncryptionService implements IEncryptionProvider, IKeyManagementPro
     private readonly configService: ConfigService,
     private readonly vaultService: VaultService,
   ) {
-    this.algorithm = this.configService.get<string>('ENCRYPTION_ALGORITHM', 'aes-256-gcm');
-    this.keyLength = parseInt(this.configService.get<string>('ENCRYPTION_KEY_LENGTH', '32'), 10);
-    this.ivLength = parseInt(this.configService.get<string>('ENCRYPTION_IV_LENGTH', '16'), 10);
-    this.authTagLength = parseInt(this.configService.get<string>('ENCRYPTION_AUTH_TAG_LENGTH', '16'), 10);
+    this.algorithm = this.configService.get<string>(
+      'ENCRYPTION_ALGORITHM',
+      'aes-256-gcm',
+    );
+    this.keyLength = parseInt(
+      this.configService.get<string>('ENCRYPTION_KEY_LENGTH', '32'),
+      10,
+    );
+    this.ivLength = parseInt(
+      this.configService.get<string>('ENCRYPTION_IV_LENGTH', '16'),
+      10,
+    );
+    this.authTagLength = parseInt(
+      this.configService.get<string>('ENCRYPTION_AUTH_TAG_LENGTH', '16'),
+      10,
+    );
   }
 
   /**
@@ -51,7 +71,9 @@ export class EncryptionService implements IEncryptionProvider, IKeyManagementPro
   private async initializeMasterKey(): Promise<void> {
     try {
       // Try to load from Vault first
-      const vaultKey = await this.vaultService.readSecret(APP_CONSTANTS.VAULT_MASTER_KEY);
+      const vaultKey = (await this.vaultService.readSecret(
+        APP_CONSTANTS.VAULT_MASTER_KEY,
+      )) as { key?: string } | null;
       if (vaultKey?.key) {
         this.masterKey = Buffer.from(vaultKey.key, 'hex');
         this.logger.log('✅ Master encryption key loaded from Vault');
@@ -68,7 +90,9 @@ export class EncryptionService implements IEncryptionProvider, IKeyManagementPro
           algorithm: this.algorithm,
           createdAt: new Date().toISOString(),
         });
-        this.logger.log('✅ Master encryption key generated and stored in Vault');
+        this.logger.log(
+          '✅ Master encryption key generated and stored in Vault',
+        );
         return;
       }
     } catch (error: any) {
@@ -76,14 +100,14 @@ export class EncryptionService implements IEncryptionProvider, IKeyManagementPro
     }
 
     // Fallback: derive from JWT secret (dev only)
-    const secret = this.configService.get<string>('jwt.accessSecret', 'default-dev-secret');
-    this.masterKey = crypto
-      .createHash('sha256')
-      .update(secret)
-      .digest();
+    const secret = this.configService.get<string>(
+      'jwt.accessSecret',
+      'default-dev-secret',
+    );
+    this.masterKey = crypto.createHash('sha256').update(secret).digest();
     this.logger.warn(
       '⚠️ Using derived master key from JWT secret. ' +
-      'This is acceptable for development only. Use Vault in production.',
+        'This is acceptable for development only. Use Vault in production.',
     );
   }
 
@@ -161,11 +185,14 @@ export class EncryptionService implements IEncryptionProvider, IKeyManagementPro
 
     // Store the encrypted DEK in Vault if available
     try {
-      await this.vaultService.writeSecret(`${APP_CONSTANTS.VAULT_FILE_KEY_PREFIX}${keyId}`, {
-        encryptedKey: encryptedKey.toString('hex'),
-        algorithm: this.algorithm,
-        createdAt: new Date().toISOString(),
-      });
+      await this.vaultService.writeSecret(
+        `${APP_CONSTANTS.VAULT_FILE_KEY_PREFIX}${keyId}`,
+        {
+          encryptedKey: encryptedKey.toString('hex'),
+          algorithm: this.algorithm,
+          createdAt: new Date().toISOString(),
+        },
+      );
     } catch (error: any) {
       this.logger.debug(`Vault key storage skipped: ${error.message}`);
     }
@@ -201,7 +228,10 @@ export class EncryptionService implements IEncryptionProvider, IKeyManagementPro
     if (!this.masterKey) throw new Error('Master key not initialized');
 
     const iv = encryptedKey.subarray(0, this.ivLength);
-    const authTag = encryptedKey.subarray(this.ivLength, this.ivLength + this.authTagLength);
+    const authTag = encryptedKey.subarray(
+      this.ivLength,
+      this.ivLength + this.authTagLength,
+    );
     const data = encryptedKey.subarray(this.ivLength + this.authTagLength);
 
     const decipher = crypto.createDecipheriv(
@@ -264,17 +294,22 @@ export class EncryptionService implements IEncryptionProvider, IKeyManagementPro
    */
   async storeKey(keyId: string, key: Buffer): Promise<void> {
     const encryptedKey = await this.encryptKey(key);
-    await this.vaultService.writeSecret(`${APP_CONSTANTS.VAULT_FILE_KEY_PREFIX}${keyId}`, {
-      encryptedKey: encryptedKey.toString('hex'),
-      algorithm: this.algorithm,
-      storedAt: new Date().toISOString(),
-    });
+    await this.vaultService.writeSecret(
+      `${APP_CONSTANTS.VAULT_FILE_KEY_PREFIX}${keyId}`,
+      {
+        encryptedKey: encryptedKey.toString('hex'),
+        algorithm: this.algorithm,
+        storedAt: new Date().toISOString(),
+      },
+    );
   }
 
   /**
    * Delete a DEK from Vault.
    */
   async deleteKey(keyId: string): Promise<void> {
-    await this.vaultService.deleteSecret(`${APP_CONSTANTS.VAULT_FILE_KEY_PREFIX}${keyId}`);
+    await this.vaultService.deleteSecret(
+      `${APP_CONSTANTS.VAULT_FILE_KEY_PREFIX}${keyId}`,
+    );
   }
 }

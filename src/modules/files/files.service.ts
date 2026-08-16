@@ -1,5 +1,8 @@
 import {
-  Injectable, Logger, NotFoundException, ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -49,7 +52,9 @@ export class FilesService {
   ): Promise<FileDocument> {
     // Validate MIME type
     if (!FileUtil.isAllowedMimeType(file.mimetype)) {
-      throw new BadRequestException(`File type '${file.mimetype}' is not allowed`);
+      throw new BadRequestException(
+        `File type '${file.mimetype}' is not allowed`,
+      );
     }
 
     // Generate checksum of original file
@@ -59,10 +64,14 @@ export class FilesService {
       .digest('hex');
 
     // Generate a unique DEK for this file
-    const { keyId, key, encryptedKey } = await this.encryptionService.generateKey();
+    const { keyId, key, encryptedKey } =
+      await this.encryptionService.generateKey();
 
     // Encrypt the file data
-    const { encryptedData, iv, authTag } = await this.encryptionService.encrypt(file.buffer, key);
+    const { encryptedData, iv, authTag } = await this.encryptionService.encrypt(
+      file.buffer,
+      key,
+    );
 
     // Generate storage path
     const fileUuid = uuidv4();
@@ -108,7 +117,9 @@ export class FilesService {
       status: 'success',
     });
 
-    this.logger.log(`File uploaded: ${file.originalname} (${fileDoc.uuid}) by ${user.email}`);
+    this.logger.log(
+      `File uploaded: ${file.originalname} (${fileDoc.uuid}) by ${user.email}`,
+    );
     return fileDoc;
   }
 
@@ -132,7 +143,12 @@ export class FilesService {
     // Decrypt the file data
     const iv = Buffer.from(file.encryptionIv, 'hex');
     const authTag = Buffer.from(file.encryptionAuthTag, 'hex');
-    const decryptedData = await this.encryptionService.decrypt(encryptedData, dek, iv, authTag);
+    const decryptedData = await this.encryptionService.decrypt(
+      encryptedData,
+      dek,
+      iv,
+      authTag,
+    );
 
     // Verify checksum
     const checksum = crypto
@@ -141,7 +157,9 @@ export class FilesService {
       .digest('hex');
 
     if (checksum !== file.checksum) {
-      this.logger.error(`Checksum mismatch for file ${file.uuid}! File may be corrupted.`);
+      this.logger.error(
+        `Checksum mismatch for file ${file.uuid}! File may be corrupted.`,
+      );
       throw new BadRequestException('File integrity check failed');
     }
 
@@ -164,7 +182,10 @@ export class FilesService {
   /**
    * Get file metadata by ID or UUID.
    */
-  async getFileMetadata(fileId: string, user: AuthenticatedUser): Promise<FileDocument> {
+  async getFileMetadata(
+    fileId: string,
+    user: AuthenticatedUser,
+  ): Promise<FileDocument> {
     return this.findFileWithAccessCheck(fileId, user);
   }
 
@@ -175,11 +196,18 @@ export class FilesService {
     query: QueryFilesDto,
     user: AuthenticatedUser,
   ): Promise<PaginatedResponse<FileDocument>> {
-    const { page = 1, limit = 20, search, mimeType, accessLevel, department } = query;
+    const {
+      page = 1,
+      limit = 20,
+      search,
+      mimeType,
+      accessLevel,
+      department,
+    } = query;
     const filter: Record<string, any> = { isDeleted: false };
 
     // Access control: only admins see all files, others see own + internal/public
-    const isAdmin = [Role.SUPER_ADMIN, Role.ADMIN].includes(user.role as Role);
+    const isAdmin = [Role.SUPER_ADMIN, Role.ADMIN].includes(user.role);
     if (!isAdmin) {
       filter.$or = [
         { uploadedBy: user.userId },
@@ -276,12 +304,14 @@ export class FilesService {
     }
 
     const isOwner = file.uploadedBy.toString() === user.userId;
-    const isAdmin = [Role.SUPER_ADMIN, Role.ADMIN].includes(user.role as Role);
+    const isAdmin = [Role.SUPER_ADMIN, Role.ADMIN].includes(user.role);
     const isManager = user.role === Role.MANAGER;
 
     if (ownerOrAdminOnly) {
       if (!isOwner && !isAdmin) {
-        throw new ForbiddenException('You do not have permission to perform this action');
+        throw new ForbiddenException(
+          'You do not have permission to perform this action',
+        );
       }
       return file;
     }

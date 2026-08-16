@@ -1,9 +1,20 @@
 import {
-  Controller, Get, Post, Patch, Param, Query, Body, Req,
-  HttpCode, HttpStatus,
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Param,
+  Query,
+  Body,
+  Req,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import {
-  ApiTags, ApiOperation, ApiBearerAuth, ApiResponse as SwaggerResponse,
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiResponse as SwaggerResponse,
 } from '@nestjs/swagger';
 import * as express from 'express';
 import { AdminService } from './admin.service';
@@ -34,10 +45,14 @@ export class AdminController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: 'Create a new user account',
-    description: 'Creates a user with a temporary password. ' +
+    description:
+      'Creates a user with a temporary password. ' +
       'Admins cannot create users with equal or higher privilege.',
   })
-  @SwaggerResponse({ status: 201, description: 'User created with temporary password' })
+  @SwaggerResponse({
+    status: 201,
+    description: 'User created with temporary password',
+  })
   async createUser(
     @Body() dto: CreateUserDto,
     @CurrentUser() user: JwtPayloadNs.AuthenticatedUser,
@@ -98,7 +113,10 @@ export class AdminController {
   ) {
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
     const result = await this.adminService.activateUser(id, user, ip);
-    return { message: 'User activated', user: { id: result._id, email: result.email, isActive: result.isActive } };
+    return {
+      message: 'User activated',
+      user: { id: result._id, email: result.email, isActive: result.isActive },
+    };
   }
 
   @Post('users/:id/deactivate')
@@ -112,13 +130,18 @@ export class AdminController {
   ) {
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
     const result = await this.adminService.deactivateUser(id, user, ip);
-    return { message: 'User deactivated', user: { id: result._id, email: result.email, isActive: result.isActive } };
+    return {
+      message: 'User deactivated',
+      user: { id: result._id, email: result.email, isActive: result.isActive },
+    };
   }
 
   @Post('users/:id/reset-password')
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Reset user password (generates temporary password)' })
+  @ApiOperation({
+    summary: 'Reset user password (generates temporary password)',
+  })
   async resetPassword(
     @Param('id') id: string,
     @CurrentUser() user: JwtPayloadNs.AuthenticatedUser,
@@ -139,7 +162,10 @@ export class AdminController {
   ) {
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
     const result = await this.adminService.changeUserRole(id, role, user, ip);
-    return { message: 'Role updated', user: { id: result._id, email: result.email, role: result.role } };
+    return {
+      message: 'Role updated',
+      user: { id: result._id, email: result.email, role: result.role },
+    };
   }
 
   // ─── Enrollment Token Management ──────────────────────
@@ -149,7 +175,8 @@ export class AdminController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: 'Create enrollment token for device onboarding',
-    description: 'Generates a single-use enrollment token that an employee uses in SetupApp ' +
+    description:
+      'Generates a single-use enrollment token that an employee uses in SetupApp ' +
       'to onboard their device. Token includes employee binding and expiration.',
   })
   @SwaggerResponse({ status: 201, description: 'Enrollment token created' })
@@ -168,7 +195,8 @@ export class AdminController {
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   @ApiOperation({
     summary: 'List all registered devices',
-    description: 'Returns all devices with pagination and optional status/employee filters.',
+    description:
+      'Returns all devices with pagination and optional status/employee filters.',
   })
   async getDevices(@Query() query: any) {
     return this.adminService.getDevices(query);
@@ -180,7 +208,8 @@ export class AdminController {
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   @ApiOperation({
     summary: 'View audit logs',
-    description: 'Query audit logs with filters for action type, user, resource, and date range.',
+    description:
+      'Query audit logs with filters for action type, user, resource, and date range.',
   })
   async getAuditLogs(@Query() query: any) {
     return this.adminService.getAuditLogs(query);

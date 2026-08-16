@@ -16,13 +16,28 @@ export type FileAccessDocument = FileAccessEntity & Document;
 })
 export class FileAccessEntity {
   // ─── Core Share Fields ──────────────────────────────
-  @Prop({ type: Types.ObjectId, ref: 'FileEntity', required: true, index: true })
+  @Prop({
+    type: Types.ObjectId,
+    ref: 'FileEntity',
+    required: true,
+    index: true,
+  })
   fileId: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'UserEntity', required: true, index: true })
+  @Prop({
+    type: Types.ObjectId,
+    ref: 'UserEntity',
+    required: true,
+    index: true,
+  })
   ownerId: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'UserEntity', required: true, index: true })
+  @Prop({
+    type: Types.ObjectId,
+    ref: 'UserEntity',
+    required: true,
+    index: true,
+  })
   sharedWithUserId: Types.ObjectId;
 
   @Prop({

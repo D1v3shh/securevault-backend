@@ -18,7 +18,12 @@ export interface IEncryptionProvider {
    * @param key Optional decryption key
    * @returns Decrypted plaintext data
    */
-  decrypt(encryptedData: Buffer, key?: Buffer, iv?: Buffer, authTag?: Buffer): Promise<Buffer>;
+  decrypt(
+    encryptedData: Buffer,
+    key?: Buffer,
+    iv?: Buffer,
+    authTag?: Buffer,
+  ): Promise<Buffer>;
 }
 
 /**

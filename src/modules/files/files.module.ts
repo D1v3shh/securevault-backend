@@ -10,9 +10,7 @@ import { AuditModule } from '../audit/audit.module';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([
-      { name: FileEntity.name, schema: FileSchema },
-    ]),
+    MongooseModule.forFeature([{ name: FileEntity.name, schema: FileSchema }]),
     MulterModule.register({
       limits: {
         fileSize: 100 * 1024 * 1024, // 100MB

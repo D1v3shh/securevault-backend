@@ -27,7 +27,13 @@ export class UserEntity {
   @Prop({ type: String, default: () => uuidv4(), unique: true, index: true })
   uuid: string;
 
-  @Prop({ required: true, unique: true, lowercase: true, trim: true, index: true })
+  @Prop({
+    required: true,
+    unique: true,
+    lowercase: true,
+    trim: true,
+    index: true,
+  })
   email: string;
 
   @Prop({ required: true })

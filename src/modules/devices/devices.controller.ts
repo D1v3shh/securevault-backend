@@ -1,10 +1,22 @@
 import {
-  Controller, Post, Get, Patch, Body, Param, Query, Req,
-  HttpCode, HttpStatus,
+  Controller,
+  Post,
+  Get,
+  Patch,
+  Body,
+  Param,
+  Query,
+  Req,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import {
-  ApiTags, ApiOperation, ApiBearerAuth,
-  ApiResponse as SwaggerResponse, ApiParam, ApiQuery,
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiResponse as SwaggerResponse,
+  ApiParam,
+  ApiQuery,
 } from '@nestjs/swagger';
 import * as express from 'express';
 import { DevicesService } from './devices.service';
@@ -33,7 +45,8 @@ export class DevicesController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: 'Register a new device',
-    description: 'Registers a device with its fingerprint and hardware metadata. ' +
+    description:
+      'Registers a device with its fingerprint and hardware metadata. ' +
       'Checks for duplicate fingerprints and blocked devices.',
   })
   @SwaggerResponse({ status: 201, description: 'Device registered' })
@@ -63,13 +76,14 @@ export class DevicesController {
   @Get('me')
   @ApiOperation({
     summary: 'Get my devices',
-    description: 'Returns all devices registered to the current authenticated user.',
+    description:
+      'Returns all devices registered to the current authenticated user.',
   })
   @SwaggerResponse({ status: 200, description: 'User devices list' })
   async getMyDevices(@CurrentUser() user: JwtPayloadNs.AuthenticatedUser) {
     const devices = await this.devicesService.findByUserId(user.userId);
     return {
-      devices: devices.map(d => ({
+      devices: devices.map((d) => ({
         deviceId: d.deviceId,
         fingerprint: d.fingerprint,
         employeeId: d.employeeId,
@@ -143,7 +157,8 @@ export class DevicesController {
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   @ApiOperation({
     summary: 'Update device status',
-    description: 'Change device trust status. Admin/Super Admin only. ' +
+    description:
+      'Change device trust status. Admin/Super Admin only. ' +
       'Supported transitions: pending→approved, approved→revoked, any→blocked.',
   })
   @ApiParam({ name: 'id', description: 'Device MongoDB _id' })

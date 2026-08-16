@@ -27,12 +27,19 @@ async function bootstrap() {
   app.use(cookieParser());
 
   // ─── CORS ───────────────────────────────────────────
-  const corsOrigins = configService.get<string[]>('app.corsOrigins', ['http://localhost:3000']);
+  const corsOrigins = configService.get<string[]>('app.corsOrigins', [
+    'http://localhost:3000',
+  ]);
   app.enableCors({
     origin: corsOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Device-Fingerprint'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Requested-With',
+      'X-Device-Fingerprint',
+    ],
   });
 
   // ─── Global Pipes ──────────────────────────────────
@@ -61,21 +68,21 @@ async function bootstrap() {
       .setTitle('SecureVault API')
       .setDescription(
         '## SecureVault — Enterprise-Grade Secure Backend\n\n' +
-        'Centralized backend supporting device onboarding, certificate-based authentication, ' +
-        'and secure API access for desktop applications.\n\n' +
-        '### Core Features\n' +
-        '- **Device Enrollment** — SetupApp onboarding via enrollment tokens\n' +
-        '- **PKI Certificate Management** — X.509 certificate signing via HashiCorp Vault PKI\n' +
-        '- **Passwordless Authentication** — Certificate-based login for Main SecureVault App\n' +
-        '- **Device Trust Management** — Fingerprint-based device approval workflow\n' +
-        '- **JWT Session Management** — Access/refresh token issuance with rotation\n' +
-        '- **RBAC** — Role-based authorization (Super Admin, Admin, Manager, Employee)\n' +
-        '- **Audit Logging** — Immutable audit trail for all security events\n\n' +
-        '### Applications\n' +
-        '| App | Purpose |\n' +
-        '|---|---|\n' +
-        '| **SetupApp** | Device enrollment & certificate installation |\n' +
-        '| **Main SecureVault** | Daily secure operations with certificate auth |\n',
+          'Centralized backend supporting device onboarding, certificate-based authentication, ' +
+          'and secure API access for desktop applications.\n\n' +
+          '### Core Features\n' +
+          '- **Device Enrollment** — SetupApp onboarding via enrollment tokens\n' +
+          '- **PKI Certificate Management** — X.509 certificate signing via HashiCorp Vault PKI\n' +
+          '- **Passwordless Authentication** — Certificate-based login for Main SecureVault App\n' +
+          '- **Device Trust Management** — Fingerprint-based device approval workflow\n' +
+          '- **JWT Session Management** — Access/refresh token issuance with rotation\n' +
+          '- **RBAC** — Role-based authorization (Super Admin, Admin, Manager, Employee)\n' +
+          '- **Audit Logging** — Immutable audit trail for all security events\n\n' +
+          '### Applications\n' +
+          '| App | Purpose |\n' +
+          '|---|---|\n' +
+          '| **SetupApp** | Device enrollment & certificate installation |\n' +
+          '| **Main SecureVault** | Daily secure operations with certificate auth |\n',
       )
       .setVersion('2.0.0')
       .addBearerAuth(
@@ -122,4 +129,4 @@ async function bootstrap() {
   logger.log(`📋 Environment: ${configService.get('app.env')}`);
 }
 
-bootstrap();
+void bootstrap();

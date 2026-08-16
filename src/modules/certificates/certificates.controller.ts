@@ -1,14 +1,27 @@
 import {
-  Controller, Post, Get, Body, Param, Req, HttpCode, HttpStatus,
+  Controller,
+  Post,
+  Get,
+  Body,
+  Param,
+  Req,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import {
-  ApiTags, ApiOperation, ApiBearerAuth,
-  ApiResponse as SwaggerResponse, ApiParam,
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiResponse as SwaggerResponse,
+  ApiParam,
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import * as express from 'express';
 import { CertificatesService } from './certificates.service';
-import { VerifyCertificateDto, RevokeCertificateDto } from './dto/certificate.dto';
+import {
+  VerifyCertificateDto,
+  RevokeCertificateDto,
+} from './dto/certificate.dto';
 import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -34,10 +47,14 @@ export class CertificatesController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Verify a certificate',
-    description: 'Validates an X.509 certificate against the trust store. ' +
+    description:
+      'Validates an X.509 certificate against the trust store. ' +
       'Checks certificate chain, expiry, revocation status, and device fingerprint binding.',
   })
-  @SwaggerResponse({ status: 200, description: 'Certificate verification result' })
+  @SwaggerResponse({
+    status: 200,
+    description: 'Certificate verification result',
+  })
   async verify(@Body() dto: VerifyCertificateDto) {
     return this.certificatesService.verifyCertificate(
       dto.certificate,
@@ -55,7 +72,8 @@ export class CertificatesController {
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Revoke a certificate',
-    description: 'Revokes a certificate by serial number. This action is irreversible. ' +
+    description:
+      'Revokes a certificate by serial number. This action is irreversible. ' +
       'The certificate will be added to the CRL and rejected on future verification attempts.',
   })
   @SwaggerResponse({ status: 200, description: 'Certificate revoked' })
@@ -72,7 +90,10 @@ export class CertificatesController {
       dto.reason,
       ip,
     );
-    return { message: 'Certificate revoked successfully', serialNumber: dto.serialNumber };
+    return {
+      message: 'Certificate revoked successfully',
+      serialNumber: dto.serialNumber,
+    };
   }
 
   /**
@@ -83,7 +104,8 @@ export class CertificatesController {
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Get certificate by serial number',
-    description: 'Retrieves certificate metadata including validity period, status, and device binding.',
+    description:
+      'Retrieves certificate metadata including validity period, status, and device binding.',
   })
   @ApiParam({ name: 'serial', description: 'Certificate serial number' })
   @SwaggerResponse({ status: 200, description: 'Certificate details' })
@@ -119,7 +141,8 @@ export class CertificatesController {
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Get certificate status',
-    description: 'Returns the current status of a certificate: active, expired, or revoked.',
+    description:
+      'Returns the current status of a certificate: active, expired, or revoked.',
   })
   @ApiParam({ name: 'serial', description: 'Certificate serial number' })
   @SwaggerResponse({ status: 200, description: 'Certificate status' })

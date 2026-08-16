@@ -21,7 +21,12 @@ export class EnrollmentTokenEntity {
   @Prop({ required: true, unique: true, index: true })
   token: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'UserEntity', required: true, index: true })
+  @Prop({
+    type: Types.ObjectId,
+    ref: 'UserEntity',
+    required: true,
+    index: true,
+  })
   userId: Types.ObjectId;
 
   @Prop({ required: true })
@@ -55,7 +60,9 @@ export class EnrollmentTokenEntity {
   metadata: Record<string, any>;
 }
 
-export const EnrollmentTokenSchema = SchemaFactory.createForClass(EnrollmentTokenEntity);
+export const EnrollmentTokenSchema = SchemaFactory.createForClass(
+  EnrollmentTokenEntity,
+);
 
 // TTL index — auto-cleanup after expiry + 30 days grace
 EnrollmentTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 2592000 });

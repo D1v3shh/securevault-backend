@@ -3,7 +3,10 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { AuditLogEntity, AuditLogDocument } from './schemas/audit-log.schema';
 import { AuditEventData } from './interfaces/audit.interface';
-import { PaginationDto, PaginatedResponse } from '../../common/dto/pagination.dto';
+import {
+  PaginationDto,
+  PaginatedResponse,
+} from '../../common/dto/pagination.dto';
 
 @Injectable()
 export class AuditService {
@@ -50,8 +53,16 @@ export class AuditService {
       endDate?: Date;
     },
   ): Promise<PaginatedResponse<AuditLogDocument>> {
-    const { page = 1, limit = 20, action, userId, resource, startDate, endDate } = query;
-    const filter: any = {};
+    const {
+      page = 1,
+      limit = 20,
+      action,
+      userId,
+      resource,
+      startDate,
+      endDate,
+    } = query;
+    const filter: Record<string, unknown> = {};
 
     if (action) filter.action = { $regex: action, $options: 'i' };
     if (userId) filter.userId = userId;
@@ -76,7 +87,14 @@ export class AuditService {
     const totalPages = Math.ceil(total / limit);
     return {
       data,
-      meta: { total, page, limit, totalPages, hasNextPage: page < totalPages, hasPreviousPage: page > 1 },
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPreviousPage: page > 1,
+      },
     };
   }
 }

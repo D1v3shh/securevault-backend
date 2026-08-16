@@ -32,15 +32,9 @@ export function hasHigherOrEqualRole(roleA: Role, roleB: Role): boolean {
 /**
  * Roles that can access admin interface.
  */
-export const ADMIN_ROLES: Role[] = [
-  Role.SUPER_ADMIN,
-  Role.ADMIN,
-];
+export const ADMIN_ROLES: Role[] = [Role.SUPER_ADMIN, Role.ADMIN];
 
 /**
  * Roles that can manage users.
  */
-export const USER_MANAGEMENT_ROLES: Role[] = [
-  Role.SUPER_ADMIN,
-  Role.ADMIN,
-];
+export const USER_MANAGEMENT_ROLES: Role[] = [Role.SUPER_ADMIN, Role.ADMIN];

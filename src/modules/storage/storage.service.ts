@@ -2,7 +2,10 @@ import { Injectable, Inject, Logger } from '@nestjs/common';
 import { Readable } from 'stream';
 import * as StorageProviderNs from './interfaces/storage-provider.interface';
 import { STORAGE_PROVIDER } from './interfaces/storage-provider.interface';
-import type { StorageResult, StorageMetadata } from './interfaces/storage-provider.interface';
+import type {
+  StorageResult,
+  StorageMetadata,
+} from './interfaces/storage-provider.interface';
 
 /**
  * Storage service facade.

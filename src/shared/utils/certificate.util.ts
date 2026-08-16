@@ -18,8 +18,14 @@ export class CertificateUtil {
    * Convert PEM to DER (raw binary).
    */
   static pemToDer(pem: string): Buffer {
-    const lines = pem.split('\n')
-      .filter(line => !line.startsWith('-----') && !line.startsWith('#') && line.trim().length > 0);
+    const lines = pem
+      .split('\n')
+      .filter(
+        (line) =>
+          !line.startsWith('-----') &&
+          !line.startsWith('#') &&
+          line.trim().length > 0,
+      );
     return Buffer.from(lines.join(''), 'base64');
   }
 
@@ -43,9 +49,9 @@ export class CertificateUtil {
     const trimmed = pem.trim();
     return (
       (trimmed.includes('-----BEGIN CERTIFICATE REQUEST-----') &&
-       trimmed.includes('-----END CERTIFICATE REQUEST-----')) ||
+        trimmed.includes('-----END CERTIFICATE REQUEST-----')) ||
       (trimmed.includes('-----BEGIN NEW CERTIFICATE REQUEST-----') &&
-       trimmed.includes('-----END NEW CERTIFICATE REQUEST-----'))
+        trimmed.includes('-----END NEW CERTIFICATE REQUEST-----'))
     );
   }
 
@@ -88,10 +94,7 @@ export class CertificateUtil {
    * Verify that a certificate was issued by a given CA.
    * Uses Node.js X509Certificate.verify().
    */
-  static verifyCertificateChain(
-    certPem: string,
-    caCertPem: string,
-  ): boolean {
+  static verifyCertificateChain(certPem: string, caCertPem: string): boolean {
     try {
       const cert = new crypto.X509Certificate(certPem);
       const caCert = new crypto.X509Certificate(caCertPem);
@@ -133,8 +136,14 @@ export class CertificateUtil {
   static certificateMatchesCsr(certPem: string, csrPem: string): boolean {
     try {
       const cert = new crypto.X509Certificate(certPem);
-      const certPubKeyDer = cert.publicKey.export({ type: 'spki', format: 'der' });
-      const certPubKeyHash = crypto.createHash('sha256').update(certPubKeyDer).digest('hex');
+      const certPubKeyDer = cert.publicKey.export({
+        type: 'spki',
+        format: 'der',
+      });
+      const certPubKeyHash = crypto
+        .createHash('sha256')
+        .update(certPubKeyDer)
+        .digest('hex');
 
       // For CSR, we'd need to parse it — simplified check
       // In production, use @peculiar/x509 or forge for full CSR parsing

@@ -1,9 +1,17 @@
-import { Injectable, Logger, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as bcrypt from 'bcrypt';
 import { UserEntity, UserDocument } from './schemas/user.schema';
-import { RefreshTokenEntity, RefreshTokenDocument } from './schemas/refresh-token.schema';
+import {
+  RefreshTokenEntity,
+  RefreshTokenDocument,
+} from './schemas/refresh-token.schema';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { QueryUsersDto } from './dto/query-users.dto';
@@ -27,14 +35,23 @@ export class UsersService {
    * Create a new user account (admin-only).
    * Generates a temporary password if not provided.
    */
-  async createUser(dto: CreateUserDto, createdBy: string): Promise<{ user: UserDocument; temporaryPassword: string }> {
-    const existing = await this.userModel.findOne({ email: dto.email.toLowerCase() });
+  async createUser(
+    dto: CreateUserDto,
+    createdBy: string,
+  ): Promise<{ user: UserDocument; temporaryPassword: string }> {
+    const existing = await this.userModel.findOne({
+      email: dto.email.toLowerCase(),
+    });
     if (existing) {
       throw new ConflictException('A user with this email already exists');
     }
 
-    const temporaryPassword = dto.temporaryPassword || this.generateTemporaryPassword();
-    const passwordHash = await bcrypt.hash(temporaryPassword, APP_CONSTANTS.BCRYPT_SALT_ROUNDS);
+    const temporaryPassword =
+      dto.temporaryPassword || this.generateTemporaryPassword();
+    const passwordHash = await bcrypt.hash(
+      temporaryPassword,
+      APP_CONSTANTS.BCRYPT_SALT_ROUNDS,
+    );
 
     const user = await this.userModel.create({
       email: dto.email.toLowerCase(),
@@ -50,12 +67,17 @@ export class UsersService {
       createdBy,
     });
 
-    this.logger.log(`User created: ${user.email} (role: ${user.role}) by ${createdBy}`);
+    this.logger.log(
+      `User created: ${user.email} (role: ${user.role}) by ${createdBy}`,
+    );
     return { user, temporaryPassword };
   }
 
   async findByEmail(email: string): Promise<UserDocument | null> {
-    return this.userModel.findOne({ email: email.toLowerCase(), deletedAt: null });
+    return this.userModel.findOne({
+      email: email.toLowerCase(),
+      deletedAt: null,
+    });
   }
 
   async findById(id: string): Promise<UserDocument | null> {
@@ -69,7 +91,9 @@ export class UsersService {
   /**
    * Query users with pagination, search, and filters.
    */
-  async findAll(query: QueryUsersDto): Promise<PaginatedResponse<UserDocument>> {
+  async findAll(
+    query: QueryUsersDto,
+  ): Promise<PaginatedResponse<UserDocument>> {
     const { page = 1, limit = 20, search, role, isActive, department } = query;
     const filter: Record<string, any> = { deletedAt: null };
 
@@ -112,7 +136,11 @@ export class UsersService {
   }
 
   async updateUser(id: string, dto: UpdateUserDto): Promise<UserDocument> {
-    const user = await this.userModel.findByIdAndUpdate(id, { $set: dto }, { returnDocument: 'after' });
+    const user = await this.userModel.findByIdAndUpdate(
+      id,
+      { $set: dto },
+      { returnDocument: 'after' },
+    );
     if (!user) throw new NotFoundException('User not found');
     return user;
   }
@@ -129,10 +157,17 @@ export class UsersService {
   }
 
   async deactivateUser(id: string): Promise<UserDocument> {
-    const user = await this.userModel.findByIdAndUpdate(id, { isActive: false }, { returnDocument: 'after' });
+    const user = await this.userModel.findByIdAndUpdate(
+      id,
+      { isActive: false },
+      { returnDocument: 'after' },
+    );
     if (!user) throw new NotFoundException('User not found');
     // Revoke all refresh tokens
-    await this.refreshTokenModel.updateMany({ userId: user._id }, { isRevoked: true });
+    await this.refreshTokenModel.updateMany(
+      { userId: user._id },
+      { isRevoked: true },
+    );
     this.logger.log(`User deactivated: ${user.email}`);
     return user;
   }
@@ -142,7 +177,10 @@ export class UsersService {
     if (!user) throw new NotFoundException('User not found');
 
     const temporaryPassword = this.generateTemporaryPassword();
-    const passwordHash = await bcrypt.hash(temporaryPassword, APP_CONSTANTS.BCRYPT_SALT_ROUNDS);
+    const passwordHash = await bcrypt.hash(
+      temporaryPassword,
+      APP_CONSTANTS.BCRYPT_SALT_ROUNDS,
+    );
 
     user.passwordHash = passwordHash;
     user.mustChangePassword = true;
@@ -152,13 +190,20 @@ export class UsersService {
     await user.save();
 
     // Revoke all refresh tokens
-    await this.refreshTokenModel.updateMany({ userId: user._id }, { isRevoked: true });
+    await this.refreshTokenModel.updateMany(
+      { userId: user._id },
+      { isRevoked: true },
+    );
     this.logger.log(`Password reset for user: ${user.email}`);
     return { temporaryPassword };
   }
 
   async changeRole(id: string, role: Role): Promise<UserDocument> {
-    const user = await this.userModel.findByIdAndUpdate(id, { role }, { returnDocument: 'after' });
+    const user = await this.userModel.findByIdAndUpdate(
+      id,
+      { role },
+      { returnDocument: 'after' },
+    );
     if (!user) throw new NotFoundException('User not found');
     this.logger.log(`Role changed for ${user.email}: ${role}`);
     return user;
@@ -174,7 +219,11 @@ export class UsersService {
     });
   }
 
-  async recordLoginAttempt(id: string, success: boolean, ip: string): Promise<void> {
+  async recordLoginAttempt(
+    id: string,
+    success: boolean,
+    ip: string,
+  ): Promise<void> {
     if (success) {
       await this.userModel.findByIdAndUpdate(id, {
         failedLoginAttempts: 0,
@@ -193,7 +242,9 @@ export class UsersService {
         update.lockoutUntil = new Date(
           Date.now() + APP_CONSTANTS.LOCKOUT_DURATION_MINUTES * 60 * 1000,
         );
-        this.logger.warn(`Account locked: ${user.email} after ${attempts} failed attempts`);
+        this.logger.warn(
+          `Account locked: ${user.email} after ${attempts} failed attempts`,
+        );
       }
 
       await this.userModel.findByIdAndUpdate(id, update);
@@ -228,7 +279,10 @@ export class UsersService {
       return;
     }
 
-    const passwordHash = await bcrypt.hash(password, APP_CONSTANTS.BCRYPT_SALT_ROUNDS);
+    const passwordHash = await bcrypt.hash(
+      password,
+      APP_CONSTANTS.BCRYPT_SALT_ROUNDS,
+    );
     await this.userModel.create({
       email: email.toLowerCase(),
       passwordHash,
@@ -245,7 +299,8 @@ export class UsersService {
   }
 
   private generateTemporaryPassword(): string {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%';
+    const chars =
+      'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%';
     let password = '';
     const randomBytes = CryptoUtil.generateRandomKey(16);
     for (let i = 0; i < 16; i++) {

@@ -37,12 +37,16 @@ export class FileProcessor {
     let errors = 0;
 
     try {
-      const expiredFiles = await this.fileModel.find({
-        isDeleted: true,
-        deletedAt: { $lte: cutoffDate },
-      }).exec();
+      const expiredFiles = await this.fileModel
+        .find({
+          isDeleted: true,
+          deletedAt: { $lte: cutoffDate },
+        })
+        .exec();
 
-      this.logger.log(`Found ${expiredFiles.length} expired files for permanent deletion`);
+      this.logger.log(
+        `Found ${expiredFiles.length} expired files for permanent deletion`,
+      );
 
       for (const file of expiredFiles) {
         try {
@@ -92,11 +96,15 @@ export class FileProcessor {
         const exists = await this.storageService.exists(file.storagePath);
         if (!exists) {
           orphaned++;
-          this.logger.warn(`Orphaned file metadata: ${file.uuid} (storage path: ${file.storagePath})`);
+          this.logger.warn(
+            `Orphaned file metadata: ${file.uuid} (storage path: ${file.storagePath})`,
+          );
         }
       }
 
-      this.logger.log(`Integrity check: ${checked} checked, ${orphaned} orphaned`);
+      this.logger.log(
+        `Integrity check: ${checked} checked, ${orphaned} orphaned`,
+      );
     } catch (error: any) {
       this.logger.error(`File integrity check failed: ${error.message}`);
     }

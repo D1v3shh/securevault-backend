@@ -1,11 +1,28 @@
 import {
-  Controller, Get, Post, Delete, Param, Query, Req, Res,
-  UploadedFile, UseInterceptors, HttpCode, HttpStatus, Body,
-  ParseFilePipe, MaxFileSizeValidator, StreamableFile,
+  Controller,
+  Get,
+  Post,
+  Delete,
+  Param,
+  Query,
+  Req,
+  Res,
+  UploadedFile,
+  UseInterceptors,
+  HttpCode,
+  HttpStatus,
+  Body,
+  ParseFilePipe,
+  MaxFileSizeValidator,
+  StreamableFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
-  ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody,
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiConsumes,
+  ApiBody,
 } from '@nestjs/swagger';
 import * as express from 'express';
 import { FilesService } from './files.service';
@@ -30,7 +47,10 @@ export class FilesController {
       properties: {
         file: { type: 'string', format: 'binary' },
         description: { type: 'string' },
-        accessLevel: { type: 'string', enum: ['private', 'internal', 'department', 'public'] },
+        accessLevel: {
+          type: 'string',
+          enum: ['private', 'internal', 'department', 'public'],
+        },
         department: { type: 'string' },
       },
       required: ['file'],

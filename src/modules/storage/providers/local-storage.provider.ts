@@ -4,7 +4,11 @@ import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
 import { Readable } from 'stream';
-import { IStorageProvider, StorageResult, StorageMetadata } from '../interfaces/storage-provider.interface';
+import {
+  IStorageProvider,
+  StorageResult,
+  StorageMetadata,
+} from '../interfaces/storage-provider.interface';
 import { CryptoUtil } from '../../../shared/utils/crypto.util';
 
 /**
@@ -84,6 +88,8 @@ export class LocalStorageProvider implements IStorageProvider {
   private async ensureDirectoryExists(dir: string): Promise<void> {
     try {
       await fs.mkdir(dir, { recursive: true });
-    } catch { /* already exists */ }
+    } catch {
+      /* already exists */
+    }
   }
 }

@@ -50,7 +50,12 @@ export class FileEntity {
   encryptionAuthTag: string;
 
   // ─── Ownership & Access ──────────────────────────
-  @Prop({ type: Types.ObjectId, ref: 'UserEntity', required: true, index: true })
+  @Prop({
+    type: Types.ObjectId,
+    ref: 'UserEntity',
+    required: true,
+    index: true,
+  })
   uploadedBy: Types.ObjectId;
 
   @Prop({

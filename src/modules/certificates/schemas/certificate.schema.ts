@@ -31,7 +31,12 @@ export class CertificateEntity {
   @Prop({ required: true, unique: true, index: true })
   serialNumber: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'UserEntity', required: true, index: true })
+  @Prop({
+    type: Types.ObjectId,
+    ref: 'UserEntity',
+    required: true,
+    index: true,
+  })
   userId: Types.ObjectId;
 
   @Prop({ required: true, index: true })
@@ -100,7 +105,8 @@ export class CertificateEntity {
   metadata: Record<string, any>;
 }
 
-export const CertificateSchema = SchemaFactory.createForClass(CertificateEntity);
+export const CertificateSchema =
+  SchemaFactory.createForClass(CertificateEntity);
 
 // Indexes
 CertificateSchema.index({ userId: 1, status: 1 });

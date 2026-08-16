@@ -1,12 +1,19 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { FileAccessEntity, FileAccessDocument } from '../schemas/file-access.schema';
+import {
+  FileAccessEntity,
+  FileAccessDocument,
+} from '../schemas/file-access.schema';
 import { FileEntity, FileDocument } from '../../files/schemas/file.schema';
 import { UserEntity, UserDocument } from '../../users/schemas/user.schema';
 import { ShareFileRequest } from '../dto/share-file-request.dto';
 import { ShareFileResponse } from '../dto/share-file-response.dto';
-import { QuerySharesDto, ShareSortField, SortOrder } from '../dto/query-shares.dto';
+import {
+  QuerySharesDto,
+  ShareSortField,
+  SortOrder,
+} from '../dto/query-shares.dto';
 import { ShareStatus } from '../enums/share-status.enum';
 import { ShareMapper } from '../mappers/share.mapper';
 import { InvalidShareRequestException } from '../exceptions/invalid-share-request.exception';
@@ -74,7 +81,9 @@ export class ShareService {
       this.logger.warn(
         `Share attempt by non-owner: user=${user.userId}, file=${dto.fileId}`,
       );
-      throw new AccessDeniedException('Only the file owner can share this file');
+      throw new AccessDeniedException(
+        'Only the file owner can share this file',
+      );
     }
 
     // ─── 3. Validate target user ───────────────────────
@@ -84,12 +93,16 @@ export class ShareService {
     }
 
     if (!targetUser.isActive) {
-      throw new InvalidShareRequestException('Target user account is not active');
+      throw new InvalidShareRequestException(
+        'Target user account is not active',
+      );
     }
 
     // ─── 4. Cannot share with self ─────────────────────
     if (dto.sharedWithUserId === user.userId) {
-      throw new InvalidShareRequestException('Cannot share a file with yourself');
+      throw new InvalidShareRequestException(
+        'Cannot share a file with yourself',
+      );
     }
 
     // ─── 5. Validate expiration ────────────────────────
@@ -99,7 +112,9 @@ export class ShareService {
     }
 
     if (expiresAt <= new Date()) {
-      throw new InvalidShareRequestException('Expiration date must be in the future');
+      throw new InvalidShareRequestException(
+        'Expiration date must be in the future',
+      );
     }
 
     // ─── 6. Check for duplicate active share ───────────
@@ -210,9 +225,7 @@ export class ShareService {
       status: 'success',
     });
 
-    this.logger.log(
-      `Share revoked: shareId=${shareId} by ${user.email}`,
-    );
+    this.logger.log(`Share revoked: shareId=${shareId} by ${user.email}`);
   }
 
   /**
@@ -237,10 +250,7 @@ export class ShareService {
     query: QuerySharesDto,
     user: AuthenticatedUser,
   ): Promise<PaginatedResponse<SharedFileResponse>> {
-    return this.listShares(
-      { ownerId: new Types.ObjectId(user.userId) },
-      query,
-    );
+    return this.listShares({ ownerId: new Types.ObjectId(user.userId) }, query);
   }
 
   /**
@@ -263,7 +273,8 @@ export class ShareService {
 
     // Only owner or shared-with user can view
     const isOwner = share.ownerId?._id?.toString() === user.userId;
-    const isSharedWith = share.sharedWithUserId?._id?.toString() === user.userId;
+    const isSharedWith =
+      share.sharedWithUserId?._id?.toString() === user.userId;
 
     if (!isOwner && !isSharedWith) {
       throw new AccessDeniedException();
@@ -358,7 +369,11 @@ export class ShareService {
 
       // Sort
       if (sortBy === ShareSortField.FILE_NAME) {
-        pipeline.push({ $sort: { 'fileInfo.originalName': sortOrder === SortOrder.ASC ? 1 : -1 } });
+        pipeline.push({
+          $sort: {
+            'fileInfo.originalName': sortOrder === SortOrder.ASC ? 1 : -1,
+          },
+        });
       } else {
         pipeline.push({ $sort: sort });
       }

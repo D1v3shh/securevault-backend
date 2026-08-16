@@ -38,13 +38,14 @@ export enum ShareAction {
 /**
  * Minimum permission required for each action.
  */
-export const ACTION_REQUIRED_PERMISSION: Record<ShareAction, SharePermission> = {
-  [ShareAction.VIEW]: SharePermission.VIEW,
-  [ShareAction.DOWNLOAD]: SharePermission.DOWNLOAD,
-  [ShareAction.EDIT]: SharePermission.EDIT,
-  [ShareAction.DELETE]: SharePermission.FULL_ACCESS,
-  [ShareAction.SHARE]: SharePermission.FULL_ACCESS,
-};
+export const ACTION_REQUIRED_PERMISSION: Record<ShareAction, SharePermission> =
+  {
+    [ShareAction.VIEW]: SharePermission.VIEW,
+    [ShareAction.DOWNLOAD]: SharePermission.DOWNLOAD,
+    [ShareAction.EDIT]: SharePermission.EDIT,
+    [ShareAction.DELETE]: SharePermission.FULL_ACCESS,
+    [ShareAction.SHARE]: SharePermission.FULL_ACCESS,
+  };
 
 /**
  * Check if a given permission level allows a specific action.

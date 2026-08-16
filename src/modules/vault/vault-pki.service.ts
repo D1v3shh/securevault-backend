@@ -27,10 +27,16 @@ export class VaultPkiService implements OnModuleInit {
 
   constructor(private readonly configService: ConfigService) {
     this.enabled = this.configService.get<boolean>('vault.enabled', false);
-    this.address = this.configService.get<string>('vault.address', 'http://localhost:8200');
+    this.address = this.configService.get<string>(
+      'vault.address',
+      'http://localhost:8200',
+    );
     this.token = this.configService.get<string>('vault.token', '');
     this.pkiPath = this.configService.get<string>('VAULT_PKI_PATH', 'pki_int');
-    this.pkiRoleName = this.configService.get<string>('VAULT_PKI_ROLE', 'securevault-device');
+    this.pkiRoleName = this.configService.get<string>(
+      'VAULT_PKI_ROLE',
+      'securevault-device',
+    );
   }
 
   async onModuleInit(): Promise<void> {
@@ -39,7 +45,7 @@ export class VaultPkiService implements OnModuleInit {
     } else {
       this.logger.warn(
         'Vault PKI is DISABLED. Certificate signing will use local self-signed fallback. ' +
-        'This is acceptable for development only.',
+          'This is acceptable for development only.',
       );
     }
   }
@@ -87,21 +93,26 @@ export class VaultPkiService implements OnModuleInit {
     expiration: number;
   }> {
     if (!this.enabled || !this.client) {
-      this.logger.warn('Vault PKI disabled — returning self-signed mock certificate');
+      this.logger.warn(
+        'Vault PKI disabled — returning self-signed mock certificate',
+      );
       return this.generateMockCertificate(params.commonName, params.csr);
     }
 
     try {
-      const result = await this.client.write(`${this.pkiPath}/sign/${this.pkiRoleName}`, {
-        csr: params.csr,
-        common_name: params.commonName,
-        ttl: params.ttl || '8760h', // 1 year default
-        alt_names: params.altNames || '',
-        ip_sans: params.ipSans || '',
-        uri_sans: params.uriSans || '',
-        other_sans: params.otherSans || '',
-        format: 'pem',
-      });
+      const result = await this.client.write(
+        `${this.pkiPath}/sign/${this.pkiRoleName}`,
+        {
+          csr: params.csr,
+          common_name: params.commonName,
+          ttl: params.ttl || '8760h', // 1 year default
+          alt_names: params.altNames || '',
+          ip_sans: params.ipSans || '',
+          uri_sans: params.uriSans || '',
+          other_sans: params.otherSans || '',
+          format: 'pem',
+        },
+      );
 
       const data = result.data;
       return {
@@ -122,7 +133,9 @@ export class VaultPkiService implements OnModuleInit {
    */
   async revokeCertificate(serialNumber: string): Promise<void> {
     if (!this.enabled || !this.client) {
-      this.logger.warn(`Vault PKI disabled — mock revocation for serial: ${serialNumber}`);
+      this.logger.warn(
+        `Vault PKI disabled — mock revocation for serial: ${serialNumber}`,
+      );
       return;
     }
 
@@ -237,7 +250,9 @@ export class VaultPkiService implements OnModuleInit {
     expiration: number;
   } {
     const crypto = require('crypto');
-    const serialNumber = crypto.randomBytes(16).toString('hex')
+    const serialNumber = crypto
+      .randomBytes(16)
+      .toString('hex')
       .match(/.{2}/g)!
       .join(':')
       .toUpperCase();
@@ -255,14 +270,16 @@ export class VaultPkiService implements OnModuleInit {
       `# NotBefore=${now.toISOString()}`,
       `# NotAfter=${expiration.toISOString()}`,
       `# CSR-Hash=${crypto.createHash('sha256').update(csr).digest('hex').substring(0, 32)}`,
-      Buffer.from(JSON.stringify({
-        cn: commonName,
-        serial: serialNumber,
-        notBefore: now.toISOString(),
-        notAfter: expiration.toISOString(),
-        issuer: 'CN=SecureVault Dev CA',
-        mock: true,
-      })).toString('base64'),
+      Buffer.from(
+        JSON.stringify({
+          cn: commonName,
+          serial: serialNumber,
+          notBefore: now.toISOString(),
+          notAfter: expiration.toISOString(),
+          issuer: 'CN=SecureVault Dev CA',
+          mock: true,
+        }),
+      ).toString('base64'),
       '-----END CERTIFICATE-----',
     ].join('\n');
 

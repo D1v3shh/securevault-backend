@@ -2,9 +2,9 @@ import { registerAs } from '@nestjs/config';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
-const packageJson = JSON.parse(
+const packageJson: { version: string } = JSON.parse(
   readFileSync(join(__dirname, '..', '..', '..', 'package.json'), 'utf-8'),
-);
+) as { version: string };
 
 export default registerAs('app', () => ({
   name: process.env.APP_NAME || 'SecureVault',

@@ -44,7 +44,11 @@ export class AuditLogEntity {
   @Prop({ type: Object, default: {} })
   metadata: Record<string, any>;
 
-  @Prop({ type: String, enum: ['success', 'failure', 'error'], default: 'success' })
+  @Prop({
+    type: String,
+    enum: ['success', 'failure', 'error'],
+    default: 'success',
+  })
   status: string;
 
   @Prop({ type: Date, default: () => new Date(), index: true })

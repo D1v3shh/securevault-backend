@@ -77,7 +77,8 @@ export class ShareFileRequest {
   watermarkEnabled?: boolean;
 
   @ApiPropertyOptional({
-    description: 'Device certificate ID to restrict access to a specific device',
+    description:
+      'Device certificate ID to restrict access to a specific device',
     example: null,
   })
   @IsOptional()

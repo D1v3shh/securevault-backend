@@ -1,11 +1,22 @@
 import {
-  Injectable, Logger, NotFoundException, ConflictException, BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { DeviceEntity, DeviceDocument, DeviceStatus } from './schemas/device.schema';
+import {
+  DeviceEntity,
+  DeviceDocument,
+  DeviceStatus,
+} from './schemas/device.schema';
 import { RegisterDeviceDto, UpdateDeviceStatusDto } from './dto/device.dto';
-import { PaginationDto, PaginatedResponse } from '../../common/dto/pagination.dto';
+import {
+  PaginationDto,
+  PaginatedResponse,
+} from '../../common/dto/pagination.dto';
 
 @Injectable()
 export class DevicesService {
@@ -30,12 +41,18 @@ export class DevicesService {
     });
 
     if (existing) {
-      if (existing.status === DeviceStatus.REVOKED || existing.status === DeviceStatus.BLOCKED) {
+      if (
+        existing.status === DeviceStatus.REVOKED ||
+        existing.status === DeviceStatus.BLOCKED
+      ) {
         throw new ConflictException(
           'This device fingerprint has been revoked or blocked. Contact your administrator.',
         );
       }
-      if (existing.status === DeviceStatus.APPROVED || existing.status === DeviceStatus.PENDING) {
+      if (
+        existing.status === DeviceStatus.APPROVED ||
+        existing.status === DeviceStatus.PENDING
+      ) {
         throw new ConflictException(
           'A device with this fingerprint is already registered.',
         );
@@ -56,7 +73,9 @@ export class DevicesService {
       enrolledBy: userId,
     });
 
-    this.logger.log(`Device registered: ${device.deviceId} for employee ${dto.employeeId}`);
+    this.logger.log(
+      `Device registered: ${device.deviceId} for employee ${dto.employeeId}`,
+    );
     return device;
   }
 
@@ -85,7 +104,8 @@ export class DevicesService {
    * Find all devices for a specific user.
    */
   async findByUserId(userId: string): Promise<DeviceDocument[]> {
-    return this.deviceModel.find({ userId: new Types.ObjectId(userId) })
+    return this.deviceModel
+      .find({ userId: new Types.ObjectId(userId) })
       .sort({ createdAt: -1 })
       .exec();
   }
@@ -94,20 +114,23 @@ export class DevicesService {
    * Find all devices for a specific employee.
    */
   async findByEmployeeId(employeeId: string): Promise<DeviceDocument[]> {
-    return this.deviceModel.find({ employeeId })
-      .sort({ createdAt: -1 })
-      .exec();
+    return this.deviceModel.find({ employeeId }).sort({ createdAt: -1 }).exec();
   }
 
   /**
    * Approve a device (transitions from pending to approved).
    */
-  async approveDevice(deviceId: string, approvedBy: string): Promise<DeviceDocument> {
+  async approveDevice(
+    deviceId: string,
+    approvedBy: string,
+  ): Promise<DeviceDocument> {
     const device = await this.deviceModel.findOne({ deviceId });
     if (!device) throw new NotFoundException('Device not found');
 
     if (device.status !== DeviceStatus.PENDING) {
-      throw new BadRequestException(`Cannot approve device in '${device.status}' status`);
+      throw new BadRequestException(
+        `Cannot approve device in '${device.status}' status`,
+      );
     }
 
     device.status = DeviceStatus.APPROVED;
@@ -157,11 +180,11 @@ export class DevicesService {
   /**
    * Bind a certificate serial to a device.
    */
-  async bindCertificate(deviceId: string, certificateSerial: string): Promise<void> {
-    await this.deviceModel.updateOne(
-      { deviceId },
-      { certificateSerial },
-    );
+  async bindCertificate(
+    deviceId: string,
+    certificateSerial: string,
+  ): Promise<void> {
+    await this.deviceModel.updateOne({ deviceId }, { certificateSerial });
   }
 
   /**

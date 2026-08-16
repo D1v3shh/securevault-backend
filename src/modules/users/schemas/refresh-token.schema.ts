@@ -16,7 +16,12 @@ export class RefreshTokenEntity {
   @Prop({ required: true, unique: true, index: true })
   token: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'UserEntity', required: true, index: true })
+  @Prop({
+    type: Types.ObjectId,
+    ref: 'UserEntity',
+    required: true,
+    index: true,
+  })
   userId: Types.ObjectId;
 
   @Prop({ type: String, default: null })
@@ -32,7 +37,8 @@ export class RefreshTokenEntity {
   expiresAt: Date;
 }
 
-export const RefreshTokenSchema = SchemaFactory.createForClass(RefreshTokenEntity);
+export const RefreshTokenSchema =
+  SchemaFactory.createForClass(RefreshTokenEntity);
 
 // TTL index — MongoDB automatically deletes expired tokens
 RefreshTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });

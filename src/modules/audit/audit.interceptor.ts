@@ -1,5 +1,9 @@
 import {
-  Injectable, NestInterceptor, ExecutionContext, CallHandler, Logger,
+  Injectable,
+  NestInterceptor,
+  ExecutionContext,
+  CallHandler,
+  Logger,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
@@ -16,8 +20,14 @@ export class AuditInterceptor implements NestInterceptor {
 
   constructor(private readonly auditService: AuditService) {}
 
-  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
-    const request = context.switchToHttp().getRequest();
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    const request = context.switchToHttp().getRequest<{
+      method: string;
+      url: string;
+      ip: string;
+      user?: { userId: string; email: string; role: string };
+      get: (name: string) => string | undefined;
+    }>();
     const { method, url, ip, user } = request;
     const userAgent = request.get('user-agent') || '';
 
@@ -32,31 +42,40 @@ export class AuditInterceptor implements NestInterceptor {
       tap({
         next: () => {
           const resource = this.extractResource(url);
-          this.auditService.log({
-            action: `${method.toLowerCase()}.${resource}`,
-            resource,
-            userId: user?.userId,
-            userEmail: user?.email,
-            userRole: user?.role,
-            ipAddress: ip,
-            userAgent,
-            metadata: { method, url, duration: Date.now() - startTime },
-            status: 'success',
-          }).catch(() => {}); // Fire and forget
+          this.auditService
+            .log({
+              action: `${method.toLowerCase()}.${resource}`,
+              resource,
+              userId: user?.userId,
+              userEmail: user?.email,
+              userRole: user?.role,
+              ipAddress: ip,
+              userAgent,
+              metadata: { method, url, duration: Date.now() - startTime },
+              status: 'success',
+            })
+            .catch(() => {}); // Fire and forget
         },
         error: (error) => {
           const resource = this.extractResource(url);
-          this.auditService.log({
-            action: `${method.toLowerCase()}.${resource}`,
-            resource,
-            userId: user?.userId,
-            userEmail: user?.email,
-            userRole: user?.role,
-            ipAddress: ip,
-            userAgent,
-            metadata: { method, url, error: error.message, duration: Date.now() - startTime },
-            status: 'failure',
-          }).catch(() => {});
+          this.auditService
+            .log({
+              action: `${method.toLowerCase()}.${resource}`,
+              resource,
+              userId: user?.userId,
+              userEmail: user?.email,
+              userRole: user?.role,
+              ipAddress: ip,
+              userAgent,
+              metadata: {
+                method,
+                url,
+                error: error.message,
+                duration: Date.now() - startTime,
+              },
+              status: 'failure',
+            })
+            .catch(() => {});
         },
       }),
     );

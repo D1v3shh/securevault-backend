@@ -1,17 +1,28 @@
 import {
-  Injectable, Logger, BadRequestException, UnauthorizedException,
-  ConflictException, NotFoundException,
+  Injectable,
+  Logger,
+  BadRequestException,
+  UnauthorizedException,
+  ConflictException,
+  NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import * as crypto from 'crypto';
-import { EnrollmentTokenEntity, EnrollmentTokenDocument } from './schemas/enrollment-token.schema';
+import {
+  EnrollmentTokenEntity,
+  EnrollmentTokenDocument,
+} from './schemas/enrollment-token.schema';
 import { DevicesService } from '../devices/devices.service';
 import { CertificatesService } from '../certificates/certificates.service';
 import { UsersService } from '../users/users.service';
 import { AuditService } from '../audit/audit.service';
 import { AuditAction } from '../audit/interfaces/audit.interface';
-import { EnrollDeviceDto, VerifyTokenDto, RenewCertificateDto } from './dto/setup.dto';
+import {
+  EnrollDeviceDto,
+  VerifyTokenDto,
+  RenewCertificateDto,
+} from './dto/setup.dto';
 import { CertificateUtil } from '../../shared/utils/certificate.util';
 import { DeviceStatus } from '../devices/schemas/device.schema';
 
@@ -91,7 +102,9 @@ export class SetupService {
     expiresAt?: Date;
     reason?: string;
   }> {
-    const tokenRecord = await this.enrollmentTokenModel.findOne({ token: dto.token });
+    const tokenRecord = await this.enrollmentTokenModel.findOne({
+      token: dto.token,
+    });
 
     if (!tokenRecord) {
       return { valid: false, reason: 'Token not found' };
@@ -110,7 +123,9 @@ export class SetupService {
     }
 
     // Verify user still exists and is active
-    const user = await this.usersService.findById(tokenRecord.userId.toString());
+    const user = await this.usersService.findById(
+      tokenRecord.userId.toString(),
+    );
     if (!user || !user.isActive) {
       return { valid: false, reason: 'Associated user account is inactive' };
     }
@@ -128,7 +143,10 @@ export class SetupService {
    * Full device enrollment flow.
    * Validates token → registers device → signs CSR → returns certificate.
    */
-  async enrollDevice(dto: EnrollDeviceDto, ip: string): Promise<{
+  async enrollDevice(
+    dto: EnrollDeviceDto,
+    ip: string,
+  ): Promise<{
     certificate: string;
     serialNumber: string;
     issuingCa: string;
@@ -155,22 +173,32 @@ export class SetupService {
         },
         status: 'failure',
       });
-      throw new UnauthorizedException(`Enrollment failed: ${tokenResult.reason}`);
+      throw new UnauthorizedException(
+        `Enrollment failed: ${tokenResult.reason}`,
+      );
     }
 
     // 2. Validate CSR format
     if (!CertificateUtil.isValidCsrPem(dto.csr)) {
-      throw new BadRequestException('Invalid CSR format. PEM-encoded PKCS#10 required.');
+      throw new BadRequestException(
+        'Invalid CSR format. PEM-encoded PKCS#10 required.',
+      );
     }
 
     // 3. Check for duplicate device fingerprint
-    const existingDevice = await this.devicesService.findByFingerprint(dto.deviceFingerprint);
+    const existingDevice = await this.devicesService.findByFingerprint(
+      dto.deviceFingerprint,
+    );
     if (existingDevice) {
       if (existingDevice.status === DeviceStatus.BLOCKED) {
-        throw new BadRequestException('This device has been blocked. Contact your administrator.');
+        throw new BadRequestException(
+          'This device has been blocked. Contact your administrator.',
+        );
       }
       if (existingDevice.status === DeviceStatus.APPROVED) {
-        throw new ConflictException('This device is already enrolled and approved.');
+        throw new ConflictException(
+          'This device is already enrolled and approved.',
+        );
       }
     }
 
@@ -190,7 +218,10 @@ export class SetupService {
     );
 
     // 5. Auto-approve device (enrollment token = admin trust)
-    await this.devicesService.approveDevice(device.deviceId, 'system:enrollment');
+    await this.devicesService.approveDevice(
+      device.deviceId,
+      'system:enrollment',
+    );
 
     // 6. Sign CSR and generate certificate
     const certResult = await this.certificatesService.signAndStoreCertificate({
@@ -202,7 +233,9 @@ export class SetupService {
     });
 
     // 7. Consume enrollment token
-    const tokenRecord = await this.enrollmentTokenModel.findOne({ token: dto.enrollmentToken });
+    const tokenRecord = await this.enrollmentTokenModel.findOne({
+      token: dto.enrollmentToken,
+    });
     if (tokenRecord) {
       tokenRecord.usedCount += 1;
       tokenRecord.usedAt = new Date();
@@ -250,7 +283,10 @@ export class SetupService {
    * Renew an existing certificate.
    * Validates current certificate, then issues a new one.
    */
-  async renewCertificate(dto: RenewCertificateDto, ip: string): Promise<{
+  async renewCertificate(
+    dto: RenewCertificateDto,
+    ip: string,
+  ): Promise<{
     certificate: string;
     serialNumber: string;
     issuingCa: string;
@@ -265,7 +301,9 @@ export class SetupService {
     );
 
     if (!verification.valid) {
-      throw new UnauthorizedException(`Certificate renewal failed: ${verification.reason}`);
+      throw new UnauthorizedException(
+        `Certificate renewal failed: ${verification.reason}`,
+      );
     }
 
     // 2. Validate new CSR

@@ -17,7 +17,12 @@ export class SessionEntity {
   @Prop({ type: String, default: () => uuidv4(), unique: true, index: true })
   sessionId: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'UserEntity', required: true, index: true })
+  @Prop({
+    type: Types.ObjectId,
+    ref: 'UserEntity',
+    required: true,
+    index: true,
+  })
   userId: Types.ObjectId;
 
   @Prop({ type: String, required: true })
@@ -44,7 +49,11 @@ export class SessionEntity {
   @Prop({ type: Date, default: () => new Date() })
   lastActivityAt: Date;
 
-  @Prop({ type: String, enum: ['certificate', 'password'], default: 'certificate' })
+  @Prop({
+    type: String,
+    enum: ['certificate', 'password'],
+    default: 'certificate',
+  })
   authMethod: string;
 
   @Prop({ type: Object, default: {} })
@@ -59,4 +68,10 @@ SessionSchema.index({ deviceId: 1, isActive: 1 });
 SessionSchema.index({ sessionId: 1 });
 SessionSchema.index({ lastActivityAt: -1 });
 // TTL — auto-cleanup inactive sessions after 30 days
-SessionSchema.index({ endedAt: 1 }, { expireAfterSeconds: 2592000, partialFilterExpression: { endedAt: { $ne: null } } });
+SessionSchema.index(
+  { endedAt: 1 },
+  {
+    expireAfterSeconds: 2592000,
+    partialFilterExpression: { endedAt: { $ne: null } },
+  },
+);

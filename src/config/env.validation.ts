@@ -6,7 +6,9 @@ import { z } from 'zod';
  */
 export const envSchema = z.object({
   // Application
-  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  NODE_ENV: z
+    .enum(['development', 'production', 'test'])
+    .default('development'),
   APP_NAME: z.string().default('SecureVault'),
   APP_PORT: z.string().regex(/^\d+$/).default('3000'),
   APP_HOST: z.string().default('0.0.0.0'),
@@ -25,9 +27,13 @@ export const envSchema = z.object({
   REDIS_KEY_PREFIX: z.string().default('sv:'),
 
   // JWT
-  JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
+  JWT_ACCESS_SECRET: z
+    .string()
+    .min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
   JWT_ACCESS_EXPIRATION: z.string().default('15m'),
-  JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
+  JWT_REFRESH_SECRET: z
+    .string()
+    .min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
   JWT_REFRESH_EXPIRATION: z.string().default('7d'),
 
   // Vault (KV Secrets)
@@ -45,7 +51,9 @@ export const envSchema = z.object({
   VAULT_PKI_ROLE: z.string().default('securevault-device'),
 
   // Storage
-  STORAGE_TYPE: z.enum(['local', 's3', 'minio', 'azure', 'gcs']).default('local'),
+  STORAGE_TYPE: z
+    .enum(['local', 's3', 'minio', 'azure', 'gcs'])
+    .default('local'),
   STORAGE_LOCAL_PATH: z.string().default('./storage/uploads'),
   STORAGE_TEMP_PATH: z.string().default('./storage/temp'),
   STORAGE_MAX_FILE_SIZE: z.string().regex(/^\d+$/).default('104857600'),
@@ -63,7 +71,9 @@ export const envSchema = z.object({
   RATE_LIMIT_AUTH_MAX: z.string().regex(/^\d+$/).default('10'),
 
   // Logging
-  LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug', 'verbose']).default('debug'),
+  LOG_LEVEL: z
+    .enum(['error', 'warn', 'info', 'debug', 'verbose'])
+    .default('debug'),
   LOG_DIR: z.string().default('./logs'),
 
   // Super Admin Seed
@@ -82,7 +92,9 @@ export type EnvConfig = z.infer<typeof envSchema>;
  * Validate environment variables at startup.
  * Throws with detailed errors if validation fails.
  */
-export function validateEnv(config: Record<string, unknown>): Record<string, unknown> {
+export function validateEnv(
+  config: Record<string, unknown>,
+): Record<string, unknown> {
   const result = envSchema.safeParse(config);
 
   if (!result.success) {

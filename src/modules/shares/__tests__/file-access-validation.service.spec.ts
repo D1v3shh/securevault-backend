@@ -2,7 +2,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
 import { Types } from 'mongoose';
 import { FileAccessValidationService } from '../services/file-access-validation.service';
-import { FileAccessEntity, FileAccessDocument } from '../schemas/file-access.schema';
+import {
+  FileAccessEntity,
+  FileAccessDocument,
+} from '../schemas/file-access.schema';
 import { AuditService } from '../../audit/audit.service';
 import { SharePermission } from '../enums/share-permission.enum';
 import { ShareAction } from '../enums/share-permission.enum';
@@ -51,12 +54,17 @@ describe('FileAccessValidationService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         FileAccessValidationService,
-        { provide: getModelToken(FileAccessEntity.name), useValue: fileAccessModel },
+        {
+          provide: getModelToken(FileAccessEntity.name),
+          useValue: fileAccessModel,
+        },
         { provide: AuditService, useValue: auditService },
       ],
     }).compile();
 
-    service = module.get<FileAccessValidationService>(FileAccessValidationService);
+    service = module.get<FileAccessValidationService>(
+      FileAccessValidationService,
+    );
   });
 
   afterEach(() => {
