@@ -31,6 +31,21 @@ export class CertificateEntity {
   @Prop({ required: true, unique: true, index: true })
   serialNumber: string;
 
+  /**
+   * `serialNumber` with separators stripped and lower-cased.
+   *
+   * Issuers and clients format the same serial differently (`11:22:AB` vs
+   * `1122ab`), so lookups have to tolerate that. This column exists so the
+   * tolerant lookup is a single indexed query instead of a full scan of the
+   * collection compared in application code.
+   *
+   * Kept in sync automatically by the pre-validate hook below — do not set it
+   * by hand. Existing rows are populated by
+   * `scripts/backfill-certificate-serials.ts`.
+   */
+  @Prop({ type: String, default: null, index: true })
+  serialNumberNormalized: string | null;
+
   @Prop({
     type: Types.ObjectId,
     ref: 'UserEntity',
@@ -108,9 +123,32 @@ export class CertificateEntity {
 export const CertificateSchema =
   SchemaFactory.createForClass(CertificateEntity);
 
+/**
+ * Derive `serialNumberNormalized` from `serialNumber` on every document write,
+ * so the tolerant lookup key can never drift from the serial it describes.
+ *
+ * Duplicated here rather than imported from CertificateUtil to keep the schema
+ * free of module dependencies; `CertificateUtil.normalizeSerialNumber` is the
+ * canonical definition and both must stay identical.
+ */
+function normalizeSerial(serial: string): string {
+  return serial.replace(/:/g, '').toLowerCase();
+}
+
+CertificateSchema.pre('validate', function (this: CertificateDocument) {
+  if (this.serialNumber) {
+    this.serialNumberNormalized = normalizeSerial(this.serialNumber);
+  }
+});
+
 // Indexes
 CertificateSchema.index({ userId: 1, status: 1 });
 CertificateSchema.index({ serialNumber: 1, status: 1 });
+// Backs the tolerant serial lookup in CertificatesService.verifyCertificate.
+// Intentionally not unique: `serialNumber` already carries the uniqueness
+// constraint, and a unique index here would reject the null values that exist
+// on rows written before this column was introduced.
+CertificateSchema.index({ serialNumberNormalized: 1 });
 CertificateSchema.index({ deviceId: 1, status: 1 });
 CertificateSchema.index({ fingerprint: 1 });
 CertificateSchema.index({ validTo: 1 }); // For expiration monitoring

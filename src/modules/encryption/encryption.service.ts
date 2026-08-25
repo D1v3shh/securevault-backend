@@ -120,6 +120,8 @@ export class EncryptionService
    * @param data Plaintext buffer
    * @param key Optional explicit key (otherwise uses master key)
    */
+  // Node crypto is synchronous here, but IEncryptionProvider requires a Promise return.
+  // eslint-disable-next-line @typescript-eslint/require-await
   async encrypt(data: Buffer, key?: Buffer): Promise<EncryptionResult> {
     const encryptionKey = key || this.masterKey;
     if (!encryptionKey) {
@@ -143,6 +145,8 @@ export class EncryptionService
   /**
    * Decrypt data using AES-256-GCM.
    */
+  // Node crypto is synchronous here, but IEncryptionProvider requires a Promise return.
+  // eslint-disable-next-line @typescript-eslint/require-await
   async decrypt(
     encryptedData: Buffer,
     key?: Buffer,
@@ -203,6 +207,9 @@ export class EncryptionService
   /**
    * Encrypt a DEK with the master KEK.
    */
+  // Local KEK wrapping is synchronous; IKeyManagementProvider requires a Promise return
+  // (remote KMS implementations of this interface are genuinely async).
+  // eslint-disable-next-line @typescript-eslint/require-await
   async encryptKey(key: Buffer): Promise<Buffer> {
     if (!this.masterKey) throw new Error('Master key not initialized');
 
@@ -224,6 +231,9 @@ export class EncryptionService
   /**
    * Decrypt a previously encrypted DEK.
    */
+  // Local KEK unwrapping is synchronous; IKeyManagementProvider requires a Promise return
+  // (remote KMS implementations of this interface are genuinely async).
+  // eslint-disable-next-line @typescript-eslint/require-await
   async decryptKey(encryptedKey: Buffer): Promise<Buffer> {
     if (!this.masterKey) throw new Error('Master key not initialized');
 

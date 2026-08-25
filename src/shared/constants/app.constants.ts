@@ -27,6 +27,20 @@ export const APP_CONSTANTS = {
   /** Master encryption key name in Vault */
   VAULT_MASTER_KEY: 'master-encryption-key',
 
+  /**
+   * Reserved owner id for records the platform creates on its own behalf,
+   * with no authenticated user behind them — e.g. certificates issued through
+   * `POST /setup/generate-certificate`.
+   *
+   * It is the nil ObjectId: it casts cleanly on ObjectId-typed fields (a
+   * non-hex placeholder such as 'system' throws a BSONError) and can never
+   * collide with a real user document.
+   */
+  SYSTEM_USER_ID: '000000000000000000000000',
+
+  /** Human-readable alias callers may pass instead of SYSTEM_USER_ID. */
+  SYSTEM_USER_ALIAS: 'system',
+
   /** Default pagination */
   DEFAULT_PAGE: 1,
   DEFAULT_PAGE_SIZE: 20,

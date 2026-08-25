@@ -6,6 +6,7 @@ import {
   FileAccessEntity,
   FileAccessDocument,
 } from '../schemas/file-access.schema';
+import { FileEntity } from '../../files/schemas/file.schema';
 import { AuditService } from '../../audit/audit.service';
 import { SharePermission } from '../enums/share-permission.enum';
 import { ShareAction } from '../enums/share-permission.enum';
@@ -45,10 +46,12 @@ const createMockModel = () => ({
 describe('FileAccessValidationService', () => {
   let service: FileAccessValidationService;
   let fileAccessModel: ReturnType<typeof createMockModel>;
+  let fileModel: ReturnType<typeof createMockModel>;
   let auditService: { log: jest.Mock };
 
   beforeEach(async () => {
     fileAccessModel = createMockModel();
+    fileModel = createMockModel();
     auditService = { log: jest.fn().mockResolvedValue(undefined) };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -58,6 +61,7 @@ describe('FileAccessValidationService', () => {
           provide: getModelToken(FileAccessEntity.name),
           useValue: fileAccessModel,
         },
+        { provide: getModelToken(FileEntity.name), useValue: fileModel },
         { provide: AuditService, useValue: auditService },
       ],
     }).compile();
@@ -244,6 +248,66 @@ describe('FileAccessValidationService', () => {
       );
 
       expect(result).toBe(share);
+    });
+  });
+
+  // ─── fileId key resolution (UUID vs ObjectId) ─────────
+
+  describe('validateAccess — fileId resolution', () => {
+    const fileUuid = 'b3f1c0de-1234-4a5b-8c9d-0e1f2a3b4c5d';
+
+    it('should resolve a UUID fileId to its Mongo _id before querying file_access', async () => {
+      const share = createMockShare();
+      fileModel.findOne.mockResolvedValue({ _id: mockFileId });
+      fileAccessModel.findOne.mockResolvedValue(share);
+
+      const result = await service.validateAccess(
+        fileUuid,
+        mockUserId.toString(),
+        ShareAction.VIEW,
+      );
+
+      expect(result).toBe(share);
+      expect(fileModel.findOne).toHaveBeenCalledWith({ uuid: fileUuid });
+
+      // The share lookup must never receive the raw UUID — that is what makes
+      // Mongoose throw a CastError on the ObjectId-typed fileId field.
+      const filter = fileAccessModel.findOne.mock.calls[0][0] as {
+        fileId: Types.ObjectId;
+        sharedWithUserId: Types.ObjectId;
+      };
+      expect(filter.fileId).toBeInstanceOf(Types.ObjectId);
+      expect(filter.fileId.toString()).toBe(mockFileId.toString());
+      expect(filter.sharedWithUserId).toBeInstanceOf(Types.ObjectId);
+    });
+
+    it('should deny access when a UUID fileId matches no stored file', async () => {
+      fileModel.findOne.mockResolvedValue(null);
+      fileModel.findById.mockResolvedValue(null);
+
+      await expect(
+        service.validateAccess(
+          fileUuid,
+          mockUserId.toString(),
+          ShareAction.VIEW,
+        ),
+      ).rejects.toThrow(AccessDeniedException);
+
+      expect(fileAccessModel.findOne).not.toHaveBeenCalled();
+      expect(auditService.log).toHaveBeenCalledTimes(1);
+    });
+
+    it('should skip the files lookup when given a Mongo _id', async () => {
+      fileAccessModel.findOne.mockResolvedValue(createMockShare());
+
+      await service.validateAccess(
+        mockFileId.toString(),
+        mockUserId.toString(),
+        ShareAction.VIEW,
+      );
+
+      expect(fileModel.findOne).not.toHaveBeenCalled();
+      expect(fileModel.findById).not.toHaveBeenCalled();
     });
   });
 

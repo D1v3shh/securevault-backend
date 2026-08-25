@@ -20,6 +20,7 @@ import {
 import { VaultPkiService } from '../vault/vault-pki.service';
 import { DevicesService } from '../devices/devices.service';
 import { CertificateUtil } from '../../shared/utils/certificate.util';
+import { APP_CONSTANTS } from '../../shared/constants/app.constants';
 
 @Injectable()
 export class CertificatesService {
@@ -79,7 +80,7 @@ export class CertificatesService {
     // Store certificate metadata in MongoDB
     await this.certificateModel.create({
       serialNumber: signResult.serialNumber,
-      userId: new Types.ObjectId(params.userId),
+      userId: this.resolveOwnerId(params.userId),
       employeeId: params.employeeId,
       deviceId: params.deviceId,
       deviceFingerprint: params.deviceFingerprint,
@@ -111,6 +112,29 @@ export class CertificatesService {
       validFrom,
       validTo,
     };
+  }
+
+  /**
+   * Resolve the owning user for a certificate about to be stored.
+   *
+   * `certificates.userId` is an ObjectId field, so a placeholder like 'system'
+   * cannot be cast — it throws a BSONError and surfaces as a 500. Certificates
+   * issued outside an authenticated session (POST /setup/generate-certificate)
+   * are attributed to the reserved system user instead.
+   *
+   * @throws BadRequestException for an identifier that is neither a valid
+   *         ObjectId nor the system alias, so bad input is a 400 and not a 500.
+   */
+  private resolveOwnerId(userId: string): Types.ObjectId {
+    if (/^[0-9a-fA-F]{24}$/.test(userId)) {
+      return new Types.ObjectId(userId);
+    }
+
+    if (userId === APP_CONSTANTS.SYSTEM_USER_ALIAS) {
+      return new Types.ObjectId(APP_CONSTANTS.SYSTEM_USER_ID);
+    }
+
+    throw new BadRequestException(`Invalid user identifier: ${userId}`);
   }
 
   /**
@@ -184,17 +208,13 @@ export class CertificatesService {
       serialNumber: certInfo.serialNumber,
     });
 
-    // Try normalized lookup
+    // Try normalized lookup — single indexed query on serialNumberNormalized,
+    // which the schema derives on write. Rows predating that column are filled
+    // in by scripts/backfill-certificate-serials.ts.
     if (!storedCert) {
-      const allCerts = await this.certificateModel.find({
-        status: { $ne: CertificateStatus.REVOKED },
+      storedCert = await this.certificateModel.findOne({
+        serialNumberNormalized: normalizedSerial,
       });
-      storedCert =
-        allCerts.find(
-          (c) =>
-            CertificateUtil.normalizeSerialNumber(c.serialNumber) ===
-            normalizedSerial,
-        ) || null;
     }
 
     if (!storedCert) {

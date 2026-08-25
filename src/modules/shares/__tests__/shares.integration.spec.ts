@@ -69,12 +69,16 @@ let shareStore: any[] = [];
 
 const createMockModel = () => {
   const model: any = {
+    // Mirrors Mongoose's promise-returning Model.create, which the service awaits.
+    // eslint-disable-next-line @typescript-eslint/require-await
     create: jest.fn().mockImplementation(async (data) => {
       const doc = {
         _id: new Types.ObjectId(),
         ...data,
         createdAt: new Date(),
         updatedAt: new Date(),
+        // Mirrors Mongoose's promise-returning document.save(), which the service awaits.
+        // eslint-disable-next-line @typescript-eslint/require-await
         save: jest.fn().mockImplementation(async function (this: any) {
           // Update in store
           const idx = shareStore.findIndex(
@@ -88,6 +92,8 @@ const createMockModel = () => {
       shareStore.push(doc);
       return doc;
     }),
+    // Mirrors Mongoose's awaitable Model.findOne, which the service awaits.
+    // eslint-disable-next-line @typescript-eslint/require-await
     findOne: jest.fn().mockImplementation(async (filter) => {
       return (
         shareStore.find((s) => {
@@ -107,6 +113,8 @@ const createMockModel = () => {
         }) ?? null
       );
     }),
+    // Mirrors Mongoose's awaitable Model.findById, which the service awaits.
+    // eslint-disable-next-line @typescript-eslint/require-await
     findById: jest.fn().mockImplementation(async (id) => {
       return shareStore.find((s) => s._id.toString() === id.toString()) ?? null;
     }),

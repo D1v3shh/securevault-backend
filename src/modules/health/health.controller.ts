@@ -22,7 +22,7 @@ export class HealthController {
   @Public()
   @Get()
   @ApiOperation({ summary: 'Application health check' })
-  async healthCheck() {
+  healthCheck() {
     const mongoStatus = this.getMongoStatus();
 
     return {

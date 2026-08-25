@@ -1,10 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import {
   FileAccessEntity,
   FileAccessDocument,
 } from '../schemas/file-access.schema';
+import { FileEntity, FileDocument } from '../../files/schemas/file.schema';
 import { ShareStatus } from '../enums/share-status.enum';
 import {
   SharePermission,
@@ -34,6 +35,8 @@ export class FileAccessValidationService {
   constructor(
     @InjectModel(FileAccessEntity.name)
     private readonly fileAccessModel: Model<FileAccessDocument>,
+    @InjectModel(FileEntity.name)
+    private readonly fileModel: Model<FileDocument>,
     private readonly auditService: AuditService,
   ) {}
 
@@ -53,10 +56,35 @@ export class FileAccessValidationService {
     action: ShareAction,
     deviceCertificateId?: string,
   ): Promise<FileAccessDocument> {
+    // ─── Key Resolution ────────────────────────────────
+    // fileId and sharedWithUserId are ObjectId fields. Callers legitimately pass
+    // a file UUID (that's the public identifier on /files/:id), which Mongoose
+    // cannot cast — it would throw a CastError instead of denying access.
+    const fileObjectId = await this.resolveFileObjectId(fileId);
+    if (!fileObjectId) {
+      this.logger.warn(
+        `Access denied: could not resolve file=${fileId} to a stored file`,
+      );
+      await this.logAccessDenied(fileId, userId, action, 'File not found');
+      throw new AccessDeniedException();
+    }
+
+    const userObjectId = this.toObjectId(userId);
+    if (!userObjectId) {
+      this.logger.warn(`Access denied: malformed user identifier=${userId}`);
+      await this.logAccessDenied(
+        fileId,
+        userId,
+        action,
+        'Malformed user identifier',
+      );
+      throw new AccessDeniedException();
+    }
+
     // Find the active share record
     const share = await this.fileAccessModel.findOne({
-      fileId,
-      sharedWithUserId: userId,
+      fileId: fileObjectId,
+      sharedWithUserId: userObjectId,
       status: ShareStatus.ACTIVE,
     });
 
@@ -225,6 +253,43 @@ export class FileAccessValidationService {
     }
 
     return count;
+  }
+
+  /**
+   * Resolve a file identifier to the ObjectId stored on `file_access.fileId`.
+   *
+   * Accepts either a Mongo `_id` (used directly, no extra query) or a file
+   * `uuid`, which is resolved through the files collection first. Uses the same
+   * dual-key `uuid` → `_id` lookup as the other resolvers in the codebase.
+   */
+  private async resolveFileObjectId(
+    fileId: string,
+  ): Promise<Types.ObjectId | null> {
+    const asObjectId = this.toObjectId(fileId);
+    if (asObjectId) {
+      return asObjectId;
+    }
+
+    let file = await this.fileModel.findOne({ uuid: fileId });
+    if (!file) {
+      try {
+        file = await this.fileModel.findById(fileId);
+      } catch {
+        // Invalid ObjectId format — treated as not found
+      }
+    }
+
+    return file ? file._id : null;
+  }
+
+  /**
+   * Convert a 24-character hex string to an ObjectId, or null if it isn't one.
+   *
+   * Deliberately stricter than `Types.ObjectId.isValid`, which also accepts any
+   * 12-character string and would silently cast unrelated input.
+   */
+  private toObjectId(value: string): Types.ObjectId | null {
+    return /^[0-9a-fA-F]{24}$/.test(value) ? new Types.ObjectId(value) : null;
   }
 
   /**

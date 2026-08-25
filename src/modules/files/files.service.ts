@@ -19,6 +19,9 @@ import { AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
 import { FileUtil } from '../../shared/utils/file.util';
 import { PaginatedResponse } from '../../common/dto/pagination.dto';
 import { Role } from '../permissions/constants/roles.enum';
+import { FileAccessValidationService } from '../shares/services/file-access-validation.service';
+import { FileAccessDocument } from '../shares/schemas/file-access.schema';
+import { ShareAction } from '../shares/enums/share-permission.enum';
 import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
@@ -31,6 +34,7 @@ export class FilesService {
     private readonly encryptionService: EncryptionService,
     private readonly storageService: StorageService,
     private readonly auditService: AuditService,
+    private readonly fileAccessValidationService: FileAccessValidationService,
   ) {}
 
   /**
@@ -125,13 +129,29 @@ export class FilesService {
 
   /**
    * Download and decrypt a file.
+   *
+   * When access was granted by a share rather than by ownership, the share is
+   * returned so the caller can call `recordShareDownload()` once the transfer
+   * has actually completed. The counter is deliberately NOT incremented here —
+   * nothing has been delivered to the client yet at this point.
    */
   async downloadFile(
     fileId: string,
     user: AuthenticatedUser,
     ip: string,
-  ): Promise<{ buffer: Buffer; file: FileDocument }> {
-    const file = await this.findFileWithAccessCheck(fileId, user);
+    deviceCertificateId?: string,
+  ): Promise<{
+    buffer: Buffer;
+    file: FileDocument;
+    share?: FileAccessDocument;
+  }> {
+    const { file, share } = await this.findFileWithAccessCheck(
+      fileId,
+      user,
+      false,
+      ShareAction.DOWNLOAD,
+      deviceCertificateId,
+    );
 
     // Read encrypted data from storage
     const encryptedData = await this.storageService.download(file.storagePath);
@@ -172,11 +192,32 @@ export class FilesService {
       userEmail: user.email,
       userRole: user.role,
       ipAddress: ip,
-      metadata: { fileName: file.originalName },
+      metadata: {
+        fileName: file.originalName,
+        ...(share ? { viaShareId: share._id.toString() } : {}),
+      },
       status: 'success',
     });
 
-    return { buffer: decryptedData, file };
+    return { buffer: decryptedData, file, share };
+  }
+
+  /**
+   * Record a completed download against the share that authorized it.
+   *
+   * Must only be called after the file has been transferred to the client
+   * successfully — it consumes download quota and can revoke a one-time share.
+   * Failures are logged, never propagated: the user already has the bytes, so
+   * failing the request at this point would be misleading.
+   */
+  async recordShareDownload(shareId: string): Promise<void> {
+    try {
+      await this.fileAccessValidationService.recordDownload(shareId);
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to record download for share ${shareId}: ${error?.message}`,
+      );
+    }
   }
 
   /**
@@ -186,7 +227,13 @@ export class FilesService {
     fileId: string,
     user: AuthenticatedUser,
   ): Promise<FileDocument> {
-    return this.findFileWithAccessCheck(fileId, user);
+    const { file } = await this.findFileWithAccessCheck(
+      fileId,
+      user,
+      false,
+      ShareAction.VIEW,
+    );
+    return file;
   }
 
   /**
@@ -258,7 +305,7 @@ export class FilesService {
     user: AuthenticatedUser,
     ip: string,
   ): Promise<void> {
-    const file = await this.findFileWithAccessCheck(fileId, user, true);
+    const { file } = await this.findFileWithAccessCheck(fileId, user, true);
 
     file.isDeleted = true;
     file.deletedAt = new Date();
@@ -283,12 +330,28 @@ export class FilesService {
 
   /**
    * Find a file and check access permissions.
+   *
+   * Evaluation order (deliberate — do not reorder):
+   *   1. The file OWNER and ADMIN / SUPER_ADMIN pass through immediately, before
+   *      any share lookup. Owners never need a grant for their own file.
+   *   2. The file's own accessLevel rules (internal / public / department) —
+   *      these grant access without a share, as they always have.
+   *   3. Only for a requester who is neither owner nor admin and whom the
+   *      accessLevel rules do not already cover: consult
+   *      FileAccessValidationService for an ACTIVE file_access grant. That call
+   *      also enforces expiration, permission level, download caps and device
+   *      pinning, and throws a 403 when there is no usable grant.
+   *
+   * @returns the file plus the share grant it was authorized by, if any. The
+   *          share is what callers need in order to record a completed download.
    */
   private async findFileWithAccessCheck(
     fileId: string,
     user: AuthenticatedUser,
     ownerOrAdminOnly = false,
-  ): Promise<FileDocument> {
+    action: ShareAction = ShareAction.VIEW,
+    deviceCertificateId?: string,
+  ): Promise<{ file: FileDocument; share?: FileAccessDocument }> {
     // Try to find by UUID first, then by MongoDB _id
     let file = await this.fileModel.findOne({ uuid: fileId, isDeleted: false });
     if (!file) {
@@ -313,21 +376,39 @@ export class FilesService {
           'You do not have permission to perform this action',
         );
       }
-      return file;
+      return { file };
     }
 
-    // Access control checks
-    if (file.accessLevel === 'private' && !isOwner && !isAdmin) {
-      throw new ForbiddenException('You do not have access to this file');
+    // ─── 1. Owner / admin bypass (before any share lookup) ───
+    if (isOwner || isAdmin) {
+      return { file };
     }
 
-    if (file.accessLevel === 'department') {
-      // Department-level access — managers and admins can access
-      if (!isOwner && !isAdmin && !isManager) {
-        throw new ForbiddenException('You do not have access to this file');
-      }
+    // ─── 2. accessLevel rules ───────────────────────────────
+    const allowedByAccessLevel =
+      file.accessLevel === 'internal' ||
+      file.accessLevel === 'public' ||
+      (file.accessLevel === 'department' && isManager);
+
+    if (allowedByAccessLevel) {
+      return { file };
     }
 
-    return file;
+    // ─── 3. Shared access grant ─────────────────────────────
+    // Throws AccessDeniedException (403) when there is no ACTIVE grant, the
+    // grant has expired, or its permission level does not cover `action`.
+    const share = await this.fileAccessValidationService.validateAccess(
+      file._id.toString(),
+      user.userId,
+      action,
+      deviceCertificateId,
+    );
+
+    this.logger.log(
+      `Shared access granted: file=${file.uuid} user=${user.email} ` +
+        `action=${action} permission=${share.permission}`,
+    );
+
+    return { file, share };
   }
 }

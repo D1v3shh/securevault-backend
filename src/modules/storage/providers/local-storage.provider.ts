@@ -46,6 +46,9 @@ export class LocalStorageProvider implements IStorageProvider {
     return fs.readFile(fullPath);
   }
 
+  // createReadStream is synchronous, but IStorageProvider requires a Promise return
+  // (remote providers such as S3 resolve the stream asynchronously).
+  // eslint-disable-next-line @typescript-eslint/require-await
   async downloadStream(filePath: string): Promise<Readable> {
     const fullPath = this.getFullPath(filePath);
     return fsSync.createReadStream(fullPath);

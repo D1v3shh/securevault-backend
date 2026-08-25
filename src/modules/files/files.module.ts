@@ -7,6 +7,7 @@ import { FileEntity, FileSchema } from './schemas/file.schema';
 import { EncryptionModule } from '../encryption/encryption.module';
 import { StorageModule } from '../storage/storage.module';
 import { AuditModule } from '../audit/audit.module';
+import { SharesModule } from '../shares/shares.module';
 
 @Module({
   imports: [
@@ -19,6 +20,9 @@ import { AuditModule } from '../audit/audit.module';
     EncryptionModule,
     StorageModule,
     AuditModule,
+    // Provides FileAccessValidationService — the shared-access authorization
+    // gate consulted by FilesService for non-owner, non-admin requesters.
+    SharesModule,
   ],
   controllers: [FilesController],
   providers: [FilesService],

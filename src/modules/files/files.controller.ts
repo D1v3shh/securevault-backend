@@ -124,7 +124,11 @@ export class FilesController {
     @Res() res: express.Response,
   ) {
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
-    const { buffer, file } = await this.filesService.downloadFile(id, user, ip);
+    const { buffer, file, share } = await this.filesService.downloadFile(
+      id,
+      user,
+      ip,
+    );
 
     res.set({
       'Content-Type': file.mimeType,
@@ -133,6 +137,16 @@ export class FilesController {
       'Cache-Control': 'no-store, no-cache, must-revalidate',
       'X-Content-Type-Options': 'nosniff',
     });
+
+    // When the download was authorized by a share, consume quota only once the
+    // response has been flushed to the client. 'finish' does not fire if the
+    // transfer fails or the client aborts, so a failed download costs nothing.
+    if (share) {
+      const shareId = share._id.toString();
+      res.once('finish', () => {
+        void this.filesService.recordShareDownload(shareId);
+      });
+    }
 
     res.send(buffer);
   }

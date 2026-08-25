@@ -67,11 +67,10 @@ export class AuditService {
     if (action) filter.action = { $regex: action, $options: 'i' };
     if (userId) filter.userId = userId;
     if (resource) filter.resource = resource;
-    if (startDate || endDate) {
-      filter.timestamp = {};
-      if (startDate) filter.timestamp.$gte = startDate;
-      if (endDate) filter.timestamp.$lte = endDate;
-    }
+    const ts: Record<string, Date> = {};
+    if (startDate) ts.$gte = startDate;
+    if (endDate) ts.$lte = endDate;
+    if (Object.keys(ts).length) filter.timestamp = ts;
 
     const skip = (page - 1) * limit;
     const [data, total] = await Promise.all([

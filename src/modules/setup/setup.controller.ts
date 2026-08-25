@@ -22,6 +22,7 @@ import {
   RenewCertificateDto,
 } from './dto/setup.dto';
 import { Public } from '../auth/decorators/public.decorator';
+import { APP_CONSTANTS } from '../../shared/constants/app.constants';
 
 /**
  * SetupApp API controller.
@@ -108,7 +109,9 @@ export class SetupController {
   async generateCertificate(@Body() dto: GenerateCertificateDto) {
     return this.certificatesService.signAndStoreCertificate({
       csr: dto.csr,
-      userId: 'system',
+      // Not part of an authenticated session — the certificate is attributed to
+      // the reserved system user rather than a real account.
+      userId: APP_CONSTANTS.SYSTEM_USER_ID,
       employeeId: dto.employeeId,
       deviceId: dto.deviceId,
       deviceFingerprint: dto.deviceFingerprint,
