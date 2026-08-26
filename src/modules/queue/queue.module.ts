@@ -1,33 +1,25 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { AuditProcessor } from './processors/audit.processor';
 import { FileProcessor } from './processors/file.processor';
-import {
-  AuditLogEntity,
-  AuditLogSchema,
-} from '../audit/schemas/audit-log.schema';
 import { FileEntity, FileSchema } from '../files/schemas/file.schema';
 import { StorageModule } from '../storage/storage.module';
 
 /**
- * Queue module for asynchronous background task processing.
+ * Queue module for background file maintenance.
  *
- * Currently implements direct async processing. When BullMQ integration
- * is needed, simply:
- * 1. Add BullModule.forRootAsync() with Redis config
- * 2. Add BullModule.registerQueue() for each queue
- * 3. Convert processors to BullMQ @Processor() decorated classes
- * 4. The existing processor logic remains unchanged
+ * There is no queue or scheduler wired up: `bullmq` is installed but
+ * `@nestjs/bull` is declared and not installed, `@nestjs/schedule` is absent,
+ * and RedisModule's client sets `keyPrefix`, which BullMQ forbids on its
+ * connection. FileProcessor is therefore invoked by
+ * `scripts/cleanup-expired-files.ts` rather than by a worker. See the technical
+ * debt section of PROJECT_CONTEXT.md before adding BullMQ.
  */
 @Module({
   imports: [
-    MongooseModule.forFeature([
-      { name: AuditLogEntity.name, schema: AuditLogSchema },
-      { name: FileEntity.name, schema: FileSchema },
-    ]),
+    MongooseModule.forFeature([{ name: FileEntity.name, schema: FileSchema }]),
     StorageModule,
   ],
-  providers: [AuditProcessor, FileProcessor],
-  exports: [AuditProcessor, FileProcessor],
+  providers: [FileProcessor],
+  exports: [FileProcessor],
 })
 export class QueueModule {}

@@ -19,6 +19,7 @@ import {
 } from './schemas/certificate-revocation.schema';
 import { VaultPkiService } from '../vault/vault-pki.service';
 import { DevicesService } from '../devices/devices.service';
+import { SessionsService } from '../sessions/sessions.service';
 import { CertificateUtil } from '../../shared/utils/certificate.util';
 import { APP_CONSTANTS } from '../../shared/constants/app.constants';
 
@@ -33,6 +34,7 @@ export class CertificatesService {
     private readonly revocationModel: Model<CertificateRevocationDocument>,
     private readonly vaultPkiService: VaultPkiService,
     private readonly devicesService: DevicesService,
+    private readonly sessionsService: SessionsService,
   ) {}
 
   /**
@@ -374,6 +376,10 @@ export class CertificatesService {
       revokedBy,
       ipAddress: ipAddress || null,
     });
+
+    // The certificate that authenticated this device is gone, so its sessions
+    // must not stay marked active.
+    await this.sessionsService.endDeviceSessions(cert.deviceId);
 
     this.logger.log(
       `Certificate revoked: ${serialNumber} by ${revokedBy} (reason: ${reason || 'unspecified'})`,

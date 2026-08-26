@@ -10,6 +10,7 @@ import { CertificateRevocationEntity } from '../schemas/certificate-revocation.s
 import { CertificateSchema } from '../schemas/certificate.schema';
 import { VaultPkiService } from '../../vault/vault-pki.service';
 import { DevicesService } from '../../devices/devices.service';
+import { SessionsService } from '../../sessions/sessions.service';
 import { CertificateUtil } from '../../../shared/utils/certificate.util';
 import mongoose from 'mongoose';
 
@@ -36,14 +37,21 @@ const storedCert = {
 describe('CertificatesService.verifyCertificate — serial lookup', () => {
   let service: CertificatesService;
   let certificateModel: { findOne: jest.Mock; find: jest.Mock };
-  let revocationModel: { findOne: jest.Mock };
+  let revocationModel: { findOne: jest.Mock; create: jest.Mock };
+  let sessionsService: { endDeviceSessions: jest.Mock };
 
   beforeEach(async () => {
     certificateModel = {
       findOne: jest.fn().mockResolvedValue(null),
       find: jest.fn().mockResolvedValue([]),
     };
-    revocationModel = { findOne: jest.fn().mockResolvedValue(null) };
+    revocationModel = {
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({}),
+    };
+    sessionsService = {
+      endDeviceSessions: jest.fn().mockResolvedValue(undefined),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -62,12 +70,14 @@ describe('CertificatesService.verifyCertificate — serial lookup', () => {
             getIntermediateCaCertificate: jest
               .fn()
               .mockRejectedValue(new Error('vault offline')),
+            revokeCertificate: jest.fn().mockResolvedValue(undefined),
           },
         },
         {
           provide: DevicesService,
           useValue: { isDeviceTrusted: jest.fn().mockResolvedValue(true) },
         },
+        { provide: SessionsService, useValue: sessionsService },
       ],
     }).compile();
 
@@ -138,6 +148,26 @@ describe('CertificatesService.verifyCertificate — serial lookup', () => {
       serialNumber: presentedSerial,
     });
     expect(certificateModel.find).not.toHaveBeenCalled();
+  });
+
+  it('should end the device sessions when a certificate is revoked', async () => {
+    const cert = {
+      ...storedCert,
+      status: CertificateStatus.ACTIVE,
+      save: jest.fn().mockResolvedValue(undefined),
+    };
+    certificateModel.findOne.mockResolvedValue(cert);
+
+    await service.revokeCertificate(
+      storedCert.serialNumber,
+      'admin-user-id',
+      'key_compromise',
+    );
+
+    expect(cert.status).toBe(CertificateStatus.REVOKED);
+    expect(sessionsService.endDeviceSessions).toHaveBeenCalledWith(
+      storedCert.deviceId,
+    );
   });
 
   it('should report not-found without scanning when neither lookup matches', async () => {

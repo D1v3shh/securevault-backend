@@ -12,6 +12,7 @@ import { CertificatesService } from './certificates.service';
 import { CertificatesController } from './certificates.controller';
 import { DevicesModule } from '../devices/devices.module';
 import { VaultModule } from '../vault/vault.module';
+import { SessionsModule } from '../sessions/sessions.module';
 
 @Module({
   imports: [
@@ -24,6 +25,8 @@ import { VaultModule } from '../vault/vault.module';
     ]),
     DevicesModule,
     VaultModule,
+    // Certificate revocation ends the device's sessions.
+    SessionsModule,
   ],
   controllers: [CertificatesController],
   providers: [CertificatesService],

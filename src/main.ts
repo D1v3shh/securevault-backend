@@ -8,6 +8,7 @@ import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
+import { AppLoggerService } from './shared/logger/logger.service';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -15,6 +16,10 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     bufferLogs: true,
   });
+
+  // Attach the winston logger before anything else logs. This is what gives
+  // LOG_LEVEL / LOG_DIR effect and flushes the buffered startup logs into it.
+  app.useLogger(app.get(AppLoggerService));
 
   const configService = app.get(ConfigService);
 

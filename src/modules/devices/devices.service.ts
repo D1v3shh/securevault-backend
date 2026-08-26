@@ -13,6 +13,7 @@ import {
   DeviceStatus,
 } from './schemas/device.schema';
 import { RegisterDeviceDto, UpdateDeviceStatusDto } from './dto/device.dto';
+import { SessionsService } from '../sessions/sessions.service';
 import {
   PaginationDto,
   PaginatedResponse,
@@ -25,6 +26,7 @@ export class DevicesService {
   constructor(
     @InjectModel(DeviceEntity.name)
     private readonly deviceModel: Model<DeviceDocument>,
+    private readonly sessionsService: SessionsService,
   ) {}
 
   /**
@@ -170,6 +172,14 @@ export class DevicesService {
     }
 
     await device.save();
+
+    // Losing trust must not leave the device's sessions marked active.
+    if (
+      dto.status === DeviceStatus.REVOKED ||
+      dto.status === DeviceStatus.BLOCKED
+    ) {
+      await this.sessionsService.endDeviceSessions(device.deviceId);
+    }
 
     this.logger.log(
       `Device status changed: ${device.deviceId} ${previousStatus} → ${dto.status} by ${updatedBy}`,

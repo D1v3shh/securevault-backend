@@ -301,6 +301,142 @@ export class ShareService {
   }
 
   /**
+   * Fetch one page of shares with the file, owner and recipient refs resolved
+   * in the database.
+   *
+   * Used whenever the request touches the file document — a name search, a name
+   * sort, or both. One aggregate call returns rows and total via `$facet`, so
+   * the query count does not grow with the page size.
+   *
+   * @param search when given, restricts results to files whose name matches;
+   *               omitted for a pure file name sort, which must not filter.
+   */
+  private async aggregateSharePage(params: {
+    filter: Record<string, any>;
+    search?: string;
+    sortBy: ShareSortField;
+    direction: 1 | -1;
+    skip: number;
+    limit: number;
+  }): Promise<{ data: any[]; total: number }> {
+    const { filter, search, sortBy, direction, skip, limit } = params;
+    const sortByFileName = sortBy === ShareSortField.FILE_NAME;
+
+    const matchStages: any[] = [
+      { $match: filter },
+      {
+        $lookup: {
+          from: 'files',
+          localField: 'fileId',
+          foreignField: '_id',
+          as: 'fileInfo',
+        },
+      },
+      // Kept permissive so a share whose file document is missing is still
+      // listed, exactly as the find + populate path lists it. The search
+      // $match below excludes those rows on its own, since a missing name
+      // cannot match a regex.
+      { $unwind: { path: '$fileInfo', preserveNullAndEmptyArrays: true } },
+    ];
+
+    if (search) {
+      const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      matchStages.push({
+        $match: {
+          'fileInfo.originalName': { $regex: escapedSearch, $options: 'i' },
+          'fileInfo.isDeleted': false,
+        },
+      });
+    }
+
+    const sortStage = sortByFileName
+      ? { $sort: { 'fileInfo.originalName': direction } }
+      : { $sort: { [sortBy]: direction } };
+
+    const [result] = await this.fileAccessModel.aggregate(
+      [
+        ...matchStages,
+        {
+          $facet: {
+            // Page rows. The user joins sit after $skip/$limit so they only
+            // run for the rows actually being returned.
+            data: [
+              sortStage,
+              { $skip: skip },
+              { $limit: limit },
+              {
+                $lookup: {
+                  from: 'users',
+                  localField: 'ownerId',
+                  foreignField: '_id',
+                  as: 'ownerInfo',
+                },
+              },
+              {
+                $lookup: {
+                  from: 'users',
+                  localField: 'sharedWithUserId',
+                  foreignField: '_id',
+                  as: 'sharedWithInfo',
+                },
+              },
+              {
+                $unwind: {
+                  path: '$ownerInfo',
+                  preserveNullAndEmptyArrays: true,
+                },
+              },
+              {
+                $unwind: {
+                  path: '$sharedWithInfo',
+                  preserveNullAndEmptyArrays: true,
+                },
+              },
+              // Reshape into the same populated form ShareMapper expects from
+              // .populate(), carrying only the fields the response needs.
+              {
+                $set: {
+                  fileId: {
+                    _id: '$fileInfo._id',
+                    uuid: '$fileInfo.uuid',
+                    originalName: '$fileInfo.originalName',
+                    mimeType: '$fileInfo.mimeType',
+                    size: '$fileInfo.size',
+                  },
+                  ownerId: {
+                    _id: '$ownerInfo._id',
+                    email: '$ownerInfo.email',
+                    firstName: '$ownerInfo.firstName',
+                    lastName: '$ownerInfo.lastName',
+                  },
+                  sharedWithUserId: {
+                    _id: '$sharedWithInfo._id',
+                    email: '$sharedWithInfo.email',
+                    firstName: '$sharedWithInfo.firstName',
+                    lastName: '$sharedWithInfo.lastName',
+                  },
+                },
+              },
+              { $unset: ['fileInfo', 'ownerInfo', 'sharedWithInfo'] },
+            ],
+            // Total matching the same filter, before pagination.
+            meta: [{ $count: 'total' }],
+          },
+        },
+      ],
+      // Case-insensitive, accent-aware ordering for the name sort: bytewise
+      // comparison would otherwise put every capitalised name before every
+      // lowercase one, which reads as unsorted.
+      sortByFileName ? { collation: { locale: 'en', strength: 2 } } : undefined,
+    );
+
+    return {
+      data: result?.data ?? [],
+      total: result?.meta?.[0]?.total ?? 0,
+    };
+  }
+
+  /**
    * Generic list shares with pagination, sorting, and filtering.
    */
   private async listShares(
@@ -322,83 +458,30 @@ export class ShareService {
     filter.status = status ?? ShareStatus.ACTIVE;
 
     const skip = (page - 1) * limit;
+    const direction: 1 | -1 = sortOrder === SortOrder.ASC ? 1 : -1;
 
-    // Build sort object
-    const sort: Record<string, 1 | -1> = {};
-    if (sortBy === ShareSortField.FILE_NAME) {
-      // File name sort requires a pipeline, we handle it with population
-      // For now, default to createdAt
-      sort.createdAt = sortOrder === SortOrder.ASC ? 1 : -1;
-    } else {
-      sort[sortBy] = sortOrder === SortOrder.ASC ? 1 : -1;
-    }
-
-    // If searching by file name, we need to use aggregation
     let data: any[];
     let total: number;
 
-    if (search) {
-      // Use aggregation pipeline for file name search
-      const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // `originalName` lives on the file, not on the share, so both file name
+    // search and file name sort need the file joined first — those go through
+    // the aggregation. Everything else sorts on a field of file_access itself
+    // and stays on the cheaper find + countDocuments path.
+    const needsFileJoin =
+      Boolean(search) || sortBy === ShareSortField.FILE_NAME;
 
-      const pipeline: any[] = [
-        { $match: filter },
-        {
-          $lookup: {
-            from: 'files',
-            localField: 'fileId',
-            foreignField: '_id',
-            as: 'fileInfo',
-          },
-        },
-        { $unwind: '$fileInfo' },
-        {
-          $match: {
-            'fileInfo.originalName': { $regex: escapedSearch, $options: 'i' },
-            'fileInfo.isDeleted': false,
-          },
-        },
-      ];
-
-      // Count total
-      const countResult = await this.fileAccessModel.aggregate([
-        ...pipeline,
-        { $count: 'total' },
-      ]);
-      total = countResult[0]?.total ?? 0;
-
-      // Sort
-      if (sortBy === ShareSortField.FILE_NAME) {
-        pipeline.push({
-          $sort: {
-            'fileInfo.originalName': sortOrder === SortOrder.ASC ? 1 : -1,
-          },
-        });
-      } else {
-        pipeline.push({ $sort: sort });
-      }
-
-      // Paginate
-      pipeline.push({ $skip: skip }, { $limit: limit });
-
-      const rawResults = await this.fileAccessModel.aggregate(pipeline);
-
-      // Populate user fields manually
-      const populatedData = await Promise.all(
-        rawResults.map(async (item) => {
-          const doc = await this.fileAccessModel
-            .findById(item._id)
-            .populate('fileId', 'uuid originalName mimeType size')
-            .populate('ownerId', 'email firstName lastName')
-            .populate('sharedWithUserId', 'email firstName lastName')
-            .exec();
-          return doc;
-        }),
-      );
-
-      data = populatedData.filter(Boolean);
+    if (needsFileJoin) {
+      ({ data, total } = await this.aggregateSharePage({
+        filter,
+        search,
+        sortBy,
+        direction,
+        skip,
+        limit,
+      }));
     } else {
-      // Standard query without search
+      const sort: Record<string, 1 | -1> = { [sortBy]: direction };
+
       [data, total] = await Promise.all([
         this.fileAccessModel
           .find(filter)

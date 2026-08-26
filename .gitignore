@@ -43,3 +43,5 @@ docker-data/
 vault-data/
 mongo-data/
 redis-data/
+
+.env.production.example

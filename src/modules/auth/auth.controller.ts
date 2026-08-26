@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Headers,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -24,6 +25,7 @@ import {
 } from './dto/change-password.dto';
 import { CertificateLoginDto } from '../certificates/dto/certificate.dto';
 import { Public } from './decorators/public.decorator';
+import { JwtRefreshGuard } from './guards/jwt-refresh.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import * as JwtPayloadNs from './interfaces/jwt-payload.interface';
 
@@ -98,7 +100,13 @@ export class AuthController {
 
   // ─── Token Management ─────────────────────────────────
 
+  // `@Public()` stays: the global JwtAuthGuard runs before route guards and
+  // would reject the request for lacking an *access* token. JwtRefreshGuard then
+  // verifies the refresh token's signature (separate secret), `exp` and
+  // `type === 'refresh'` before the handler runs — checks the service cannot do,
+  // because it only ever compares the token's SHA-256 against the stored hash.
   @Public()
+  @UseGuards(JwtRefreshGuard)
   @Post('refresh')
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
@@ -106,7 +114,9 @@ export class AuthController {
     summary: 'Refresh access token',
     description:
       'Exchange a valid refresh token for new access and refresh tokens. ' +
-      'Implements token rotation — the old refresh token is revoked.',
+      'The token signature, type and expiry are verified by the refresh ' +
+      'strategy; the stored token hash is then checked and rotated. ' +
+      'Re-presenting an already-rotated token revokes every token for that user.',
   })
   @SwaggerResponse({ status: 200, description: 'Tokens refreshed' })
   @SwaggerResponse({
@@ -176,8 +186,16 @@ export class AuthController {
   async forceChangePassword(
     @CurrentUser() user: JwtPayloadNs.AuthenticatedUser,
     @Body() dto: ForceChangePasswordDto,
+    @Req() req: express.Request,
   ) {
-    const tokens = await this.authService.forceChangePassword(user.userId, dto);
+    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    const userAgent = req.get('user-agent') || 'unknown';
+    const tokens = await this.authService.forceChangePassword(
+      user.userId,
+      dto,
+      ip,
+      userAgent,
+    );
     return {
       message: 'Password changed successfully',
       ...tokens,

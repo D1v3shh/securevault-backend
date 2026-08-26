@@ -101,7 +101,7 @@ Global modules (no import needed): `RedisModule`, `VaultModule`, `AuditModule`.
 | Validation | `class-validator` + `class-transformer` (DTOs), `zod` (env) |
 | Docs | `@nestjs/swagger` at `/api/docs` (non-production only) |
 | Rate limiting | `@nestjs/throttler` |
-| Logging | Nest built-in `Logger`; `winston` wrapper exists but is unwired (§10) |
+| Logging | `AppLoggerService` (winston) installed via `app.useLogger()`; per-class `new Logger()` calls route through it |
 | Tests | Jest 30 + `ts-jest`, `supertest` |
 
 **TypeScript strictness is partial:** `strictNullChecks` and `noImplicitAny` are on, but full `strict` is **off**. `any` is used liberally in services.
@@ -109,7 +109,7 @@ Global modules (no import needed): `RedisModule`, `VaultModule`, `AuditModule`.
 ### Dependency notes
 
 - `package.json` contains two junk dependencies from accidental installs: **`"20": "^3.1.9"`** and **`"nvm": "^0.0.4"`**. Neither is imported anywhere. Safe to remove.
-- `bullmq` and `@nestjs/bull` are installed but **never imported** — the queue module does not use them (§10).
+- `bullmq` is installed but **never imported**; `@nestjs/bull` is declared in `package.json` but **not present in `node_modules`**, and `@nestjs/schedule` is absent entirely. There is no queue and no scheduler (§10.2).
 
 ---
 
@@ -132,7 +132,8 @@ src/
 │   └── interceptors/                    LoggingInterceptor, TransformInterceptor
 ├── shared/
 │   ├── constants/app.constants.ts  APP_CONSTANTS, QUEUE_NAMES, INJECTION_TOKENS, ALLOWED_MIME_TYPES
-│   ├── logger/logger.service.ts    AppLoggerService (winston) — NOT wired up
+│   ├── logger/logger.service.ts    AppLoggerService (winston) — wired via app.useLogger() in main.ts
+│   ├── logger/logger.module.ts     @Global LoggerModule providing AppLoggerService
 │   └── utils/                      crypto.util.ts, file.util.ts, certificate.util.ts
 └── modules/
     ├── database/    Mongoose forRootAsync (pool 2–10, autoIndex off in production)
@@ -140,22 +141,24 @@ src/
     ├── vault/       VaultService (KV v2, transit) + VaultPkiService (sign/revoke/CA/CRL)
     ├── encryption/  EncryptionService — AES-256-GCM + envelope encryption + KEK rotation
     ├── storage/     StorageService facade + LocalStorageProvider (path-traversal guarded)
-    ├── permissions/ Role enum, ROLE_HIERARCHY, Permission enum, ROLE_PERMISSIONS, PermissionsService
+    ├── permissions/ Role enum, ROLE_HIERARCHY (used by AdminService only), Permission enum + ROLE_PERMISSIONS + PermissionsService (inert, §10.2)
     ├── users/       UserEntity, RefreshTokenEntity, UsersService, /users/me controller
     ├── auth/        AuthService, guards (jwt, jwt-refresh, roles), strategies, decorators, DTOs
     ├── admin/       AdminService/Controller — user mgmt, enrollment tokens, devices, audit logs
     ├── setup/       EnrollmentTokenEntity + SetupService/Controller (SetupApp-facing, @Public)
     ├── certificates/ CertificateEntity, CertificateRevocationEntity, sign/verify/revoke/status
     ├── devices/     DeviceEntity + trust lifecycle (pending→approved→revoked/blocked)
-    ├── sessions/    SessionEntity + SessionsService (created on certificate login only)
+    ├── sessions/    SessionEntity + SessionsService (created on certificate AND password login; ended on logout and on device/certificate revocation)
     ├── files/       FileEntity + upload/download/list/soft-delete with envelope encryption
     ├── shares/      FileAccessEntity, ShareService, FileAccessValidationService, mapper, exceptions, tests
-    ├── audit/       AuditLogEntity, AuditService, AuditAction enum, AuditInterceptor (unwired)
-    ├── queue/       AuditProcessor, FileProcessor — plain services, no BullMQ, no scheduler
+    ├── audit/       AuditLogEntity, AuditService, AuditAction enum (all entries come from explicit auditService.log() calls)
+    ├── queue/       FileProcessor only — plain service, no BullMQ, no scheduler; driven by scripts/cleanup-expired-files.ts
     └── health/      GET /health (public), GET /health/detailed (authenticated)
 
 scripts/setup-vault-pki.ts   11-step Vault bootstrap: root CA, intermediate CA, device role, transit
 scripts/setup-transit.ts     Transit engine + securevault-key only (idempotent)
+scripts/backfill-certificate-serials.ts  Populates certificates.serialNumberNormalized + its index (idempotent)
+scripts/cleanup-expired-files.ts         Purges files soft-deleted >30 days; DRY RUN unless --confirm
 postman/                     Postman collection — covers auth, admin, setup, certificates, devices
 test/app.e2e-spec.ts         Stale Nest scaffold, would fail; excluded from `npm test`
 ```
@@ -174,7 +177,11 @@ test/app.e2e-spec.ts         Stale Nest scaffold, would fail; excluded from `npm
 4. On success reset counters, stamp `lastLoginAt` / `lastLoginIp`
 5. `generateTokens()` — access JWT (`type: 'access'`, 15m default) + refresh JWT (`type: 'refresh'`, 7d), signed with **separate secrets**
 6. `storeRefreshToken()` — SHA-256 hash of the JWT stored in `refresh_tokens` (raw token never persisted)
-7. Returns tokens plus `mustChangePassword` / `isFirstLogin` flags
+7. `sessionsService.createSession({ authMethod: 'password', deviceId: PASSWORD_SESSION_DEVICE_ID })` — one active password session per user; a new password login supersedes the previous one
+8. Audit `LOGIN_SUCCESS`; every rejection branch above audits `LOGIN_FAILURE` with the reason in metadata while the response stays generic
+9. Returns tokens, `sessionId`, plus `mustChangePassword` / `isFirstLogin` flags
+
+`POST /auth/refresh` (public, throttled 10/60s) is guarded by `JwtRefreshGuard`, which verifies the refresh token's signature (separate secret), `exp` and `type === 'refresh'` before the handler runs. `AuthService.refreshTokens` then looks the SHA-256 hash up in `refresh_tokens`, rotates it, re-checks `isActive`, and audits `TOKEN_REFRESH`. Presenting an already-rotated token revokes **every** refresh token for that user and audits `SUSPICIOUS_ACTIVITY`, returning the same generic 401.
 
 Every authenticated request: `JwtStrategy.validate()` rejects non-`access` tokens, then checks Redis key `sv:bl:token:<jwt>`; if present → 401 "Token has been revoked". Request gets `req.user = { userId, uuid, email, role }`.
 
@@ -230,17 +237,22 @@ Upload — `POST /files/upload` (multipart, `FileInterceptor('file')`, 100 MB ca
 
 Download — `GET /files/:id/download`: access check → read blob → `decryptKey` → `decrypt` → **recompute SHA-256 and compare to stored checksum**; mismatch → 400 "File integrity check failed" → audit `FILE_DOWNLOAD` → stream with `Content-Disposition: attachment`, `no-store`, `nosniff`.
 
-The whole file is buffered in memory on both paths. `downloadStream` exists on the provider but is unused.
+The whole file is buffered in memory on both paths (twice on download: ciphertext + plaintext). `downloadStream` exists on the provider but is unused and cannot be adopted without changing the integrity design — §10.5.
 
-**File access control** (`findFileWithAccessCheck`, resolves by `uuid` first then `_id`):
+**File access control** (`findFileWithAccessCheck`, resolves by `uuid` first then `_id`) — evaluated in this order:
 
-| accessLevel | Who can read |
-|---|---|
-| `private` | owner, ADMIN, SUPER_ADMIN |
-| `department` | owner, ADMIN, SUPER_ADMIN, MANAGER |
-| `internal`, `public` | any authenticated user |
+1. **Owner or ADMIN/SUPER_ADMIN → allowed**, before any share lookup.
+2. The file's own `accessLevel`:
 
-Delete and any `ownerOrAdminOnly` operation: owner or ADMIN/SUPER_ADMIN only. Delete is **soft** (`isDeleted`, `deletedAt`, `deletedBy`).
+   | accessLevel | Who else can read |
+   |---|---|
+   | `private` | nobody (falls through to step 3) |
+   | `department` | MANAGER |
+   | `internal`, `public` | any authenticated user |
+
+3. Otherwise `FileAccessValidationService.validateAccess(file._id, userId, action)` — an ACTIVE `file_access` grant, which also enforces lazy expiry, permission level (`VIEW` for metadata, `DOWNLOAD` for the blob), download caps and device pinning. No usable grant → 403.
+
+Delete and any `ownerOrAdminOnly` operation: owner or ADMIN/SUPER_ADMIN only, no share path. Delete is **soft** (`isDeleted`, `deletedAt`, `deletedBy`); the blob stays on disk until `scripts/cleanup-expired-files.ts` purges it after 30 days.
 
 ### 5.5 File sharing
 
@@ -324,7 +336,7 @@ Two independent mechanisms:
 - **`RolesGuard`** — plain `requiredRoles.includes(user.role)`, **exact match, no hierarchy**. `@Roles(ADMIN)` does *not* admit `SUPER_ADMIN`. Every existing admin route lists both explicitly, so this is currently correct but is a trap for new routes.
 - **`AdminService.validateRoleChange`** — *does* use `ROLE_HIERARCHY`: an admin may only assign a role strictly below their own. Plus guards against self-deactivation and self-role-change, and role changes are SUPER_ADMIN-only.
 
-`Permission` enum + `ROLE_PERMISSIONS` matrix and `PermissionsService` exist but **nothing calls them**; `hasHigherOrEqualRole`, `ADMIN_ROLES`, `USER_MANAGEMENT_ROLES` are also unused.
+`Permission` enum + `ROLE_PERMISSIONS` matrix and `PermissionsService` exist but **nothing calls them**; `hasHigherOrEqualRole`, `ADMIN_ROLES`, `USER_MANAGEMENT_ROLES` are also unused. This is deliberate debt, not an oversight — §10.2 lists the access boundaries a permission-based swap would move.
 
 ---
 
@@ -422,56 +434,96 @@ Secrets used: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, `SERVER_HOST`, `SERVER_US
 
 ## 10. Known Issues / Technical Debt
 
-### 10.1 Build and CI are broken (verified by running them)
+### 10.1 Build and CI — RESOLVED
 
-- **`npm run build` fails.** `nest build` reports two errors:
-  ```
-  src/modules/audit/audit.service.ts:72:22 - error TS18046: 'filter.timestamp' is of type 'unknown'.
-  src/modules/audit/audit.service.ts:73:20 - error TS18046: 'filter.timestamp' is of type 'unknown'.
-  ```
-  Cause: `filter` is typed `Record<string, unknown>`, so `filter.timestamp.$gte = ...` is not assignable. Fix by typing the date filter explicitly (e.g. `const ts: Record<string, Date> = {}`).
-  Note `nest-cli.json` sets `deleteOutDir: true`, so a failed build still **wipes `dist/`**.
+All four blockers below were fixed and verified (`npx tsc --noEmit` clean, `npx eslint "src/**/*.ts" "test/**/*.ts"` reports 0 errors, `npm run build` emits `dist/main.js`). Kept for history:
 
-- **`npm run lint` fails** with 11 errors and 336 warnings. All 11 errors are `@typescript-eslint/require-await` (async methods with no `await`) in `jwt-refresh.strategy.ts`, `encryption.service.ts` (×4), `health.controller.ts`, `local-storage.provider.ts`, and `shares.integration.spec.ts` (×4). Since CI runs the lint step, **job 1 of the pipeline fails today**. Also note the script includes `--fix`, so running it locally rewrites source files.
+- ~~`npm run build` fails on two `TS18046` errors in `audit.service.ts`~~ — fixed by typing the date range explicitly (`const ts: Record<string, Date> = {}`).
+- ~~`npm run lint` fails with 11 `require-await` errors~~ — fixed: `async` removed where nothing was awaited (`jwt-refresh.strategy.ts`, `health.controller.ts`), and kept with a documented `eslint-disable-next-line` where an interface contract requires a `Promise` return (`encryption.service.ts` ×4, `local-storage.provider.ts`, `shares.integration.spec.ts` ×4). **`npm run lint` still includes `--fix` and rewrites source** — see rule 18.
+- ~~`src/config/app.config.ts` throws ENOENT when compiled~~ — `resolveAppVersion()` (walks up to the nearest `package.json`) is now in `src/`, so a fresh build no longer regresses it. `dist/` is no longer ahead of `src/`.
+- ~~Build output lands in `dist/src/main.js`~~ — `"scripts"` added to `tsconfig.build.json` `exclude`, restoring the flat `dist/main.js` layout that `start:prod` and the Dockerfile expect.
 
-- **`src/config/app.config.ts` crashes the app when compiled.** It does
-  `readFileSync(join(__dirname, '..', '..', '..', 'package.json'))`. From `dist/config/` that resolves to `<repo-parent>/package.json`, which does not exist — verified by loading the compiled module, which threw `ENOENT: ... /Prototype_2/package.json`. The **committed `dist/` contains a different, fixed implementation** (`resolveAppVersion()` walking up until it finds a `package.json`) that loads fine. No branch (`main`, `features`, `linux_main`, `testing`) contains that fix in `src/`. **`dist/` is ahead of `src/`; rebuilding will regress it.** Port `resolveAppVersion` back into `src/config/app.config.ts`.
+### 10.1b Still open
 
-- **Build output layout is wrong.** `tsconfig.build.json` excludes only `node_modules`, `test`, `dist`, and `*spec.ts` — not `scripts/`. Including `scripts/*.ts` pushes the inferred `rootDir` up, so the build emits `dist/src/main.js` and `dist/scripts/…` (observed during the failed build) while `start:prod` runs `node dist/main` and the Dockerfile runs `node dist/main.js`. Add `"scripts"` to the exclude list.
+- `package.json` contains bogus dependencies `"20": "^3.1.9"` and `"nvm": "^0.0.4"` from accidental installs. Neither is imported. (`nest-winston` was also unused and has been removed.)
+- `.env.production.example` has `NODE_ENV=development` and `JWT_ACCESS_EXPIRATION=24h` despite the name, and contains real secrets while being untracked — see rule 17.
+- README drift: documents `/setup/generate-certificate` as nonexistent, describes the PKI script as 9 steps (it's 11), claims RBAC hierarchy inheritance the guard does not implement, and omits the entire `/shares` API.
 
-### 10.2 Dead or unwired code
+### 10.2 Dead or unwired code — dispositions
 
-| Item | Status |
+Each item below was reviewed and either wired in, deleted, or accepted as debt.
+
+**Wired in**
+
+| Item | Outcome |
 |---|---|
-| `FileAccessValidationService` | Fully implemented, exported, **never called**. Shares can be created and listed but grant no actual file access — `FilesService.downloadFile` doesn't consult `file_access`. **This is the single biggest functional gap.** |
-| `AuditInterceptor` | Provided and exported by `AuditModule`, never registered as a global or per-controller interceptor. All audit entries come from explicit `auditService.log()` calls. |
-| `AppLoggerService` (winston) | Never instantiated. `main.ts` uses `bufferLogs: true` but never calls `app.useLogger()`, so the default Nest logger is used and `LOG_LEVEL` / `LOG_DIR` have no effect. `nest-winston` is installed and unused. |
-| `QueueModule` | `AuditProcessor` and `FileProcessor` are plain injectables. `bullmq` / `@nestjs/bull` are installed but never imported, and **nothing schedules `cleanupExpiredFiles()` or `verifyFileIntegrity()`** — soft-deleted blobs are never actually removed from disk. |
-| `JwtRefreshStrategy` / `JwtRefreshGuard` | Registered but unused; `/auth/refresh` is `@Public()` and validates the token manually in `AuthService`. |
-| `PermissionsService`, `Permission`, `ROLE_PERMISSIONS`, `permissions` collection | Documentation-only; no runtime consumer. |
-| `hasHigherOrEqualRole`, `ADMIN_ROLES`, `USER_MANAGEMENT_ROLES` | Unused. |
-| `AuditAction.LOGIN_SUCCESS` / `LOGIN_FAILURE` / `LOGOUT` / `TOKEN_REFRESH` | Defined but never emitted — **password login, logout, and refresh are not audited**, only certificate login is. |
-| `CertificateUtil.certificateMatchesCsr` | Stub — returns `certPubKeyHash.length > 0`, i.e. effectively always `true`. Comment says it needs `@peculiar/x509` or `node-forge`. |
-| `StorageService.downloadStream` | Implemented, never used. |
+| `FileAccessValidationService` | Now consulted by `FilesService.findFileWithAccessCheck` for requesters who are neither owner nor admin (§5.4). Shares grant real access. |
+| `AppLoggerService` (winston) | Provided by `@Global LoggerModule` and installed via `app.useLogger(app.get(AppLoggerService))` in `main.ts`, which is what makes `bufferLogs: true`, `LOG_LEVEL` and `LOG_DIR` effective. Gained `fatal()`; `log/error/warn/debug/verbose` now take Nest's variadic `(message, ...optionalParams)` shape instead of a fixed `(message, trace, context)` that mis-filed the context as a stack trace. The duplicate `audit.log` file transport and the uncalled `audit()` helper were removed — the audit trail lives in Mongo. `nest-winston` uninstalled. |
+| `JwtRefreshStrategy` / `JwtRefreshGuard` | `/auth/refresh` now carries `@UseGuards(JwtRefreshGuard)` and stays `@Public()`. The guard verifies signature (refresh secret), `exp` and `type === 'refresh'` — none of which the service checked, since it only compares the token's SHA-256 against the stored hash. The service still owns the DB lookup, rotation and `isActive` check. |
+| `AuditAction.LOGIN_SUCCESS` / `LOGIN_FAILURE` / `LOGOUT` / `TOKEN_REFRESH` | Emitted by `AuthService`. `LOGIN_FAILURE` covers all four rejection branches (unknown email, deactivated, locked, bad password) with the reason in metadata only — responses stay generic to avoid account enumeration. `PASSWORD_CHANGE` and `FORCE_PASSWORD_CHANGE` are now emitted too. |
+| `SessionsService` (partial) | Password logins now create a session (`deviceId: APP_CONSTANTS.PASSWORD_SESSION_DEVICE_ID`, one active password session per user) and `login` returns `sessionId`. `endDeviceSessions` is called on device revoke/block and on certificate revocation. Still not wired: `updateActivity` (see below) and session-based authorization. |
+| `FileProcessor.cleanupExpiredFiles` | Reachable via `scripts/cleanup-expired-files.ts`. Now requires an explicit `dryRun`, honours a `limit` (default 100), and writes a `file.delete` / `event: permanent_delete` audit row **before** each delete. This is the only path that actually frees soft-deleted blobs from disk. |
+
+**Deleted**
+
+| Item | Why |
+|---|---|
+| `AuditInterceptor` | Derived `action` from the URL (`post.files`, `patch.admin`), a different namespace from the `AuditAction` enum that every call site and `AuditService.findAll`'s filters use — so its rows were invisible to the audit API. Registering it globally would have double-logged all 21 explicit call sites with lower-quality parallel rows, and it could never see auth rejections (interceptors run after guards). |
+| `AuditProcessor` | `processAuditEvent` duplicated `AuditService.log`; `processBatch` had no consumer. |
+| `CertificateUtil.certificateMatchesCsr` | `return certPubKeyHash.length > 0` — a tautology that never parsed the CSR. Zero callers, so nothing was relying on it, but a security predicate named "matches" that always passes is a trap. See §10.5 for what a real implementation needs. |
+| `nest-winston` | Installed, never imported; `AppLoggerService` does the job by hand. |
+
+**Accepted as debt**
+
+| Item | Why not now |
+|---|---|
+| `PermissionsService`, `Permission`, `ROLE_PERMISSIONS`, `permissions` collection | Swapping `RolesGuard` for permission checks is not a refactor, it moves access boundaries: `ROLE_PERMISSIONS.ADMIN` includes `user:assign-role` but `PATCH /admin/users/:id/role` is SUPER_ADMIN-only today; `MANAGER` holds `admin:access`, which no route grants; there are no `DEVICE_*` / `CERT_*` permissions, so the device and certificate routes have nothing to map to; and `VIEWER` would *lose* the file mutations it can currently perform. `PermissionEntity` also models the same concept twice (`resource`+`action` uniquely indexed, plus an optional `permission` field). Resolve the schema and extend the enum before building a guard. Nothing reads the `permissions` collection and there is no seeder for it. |
+| `StorageService.downloadStream` | Not wireable without redesigning encryption — see §10.5. Kept because it is part of the `IStorageProvider` contract an S3/MinIO provider would implement. `StreamableFile` is imported but unused in `files.controller.ts`. |
+| BullMQ / scheduler | `bullmq` installed but unimported, `@nestjs/bull` declared but not in `node_modules` (and it is the legacy Bull adapter — `@nestjs/bullmq` is the one for bullmq), `@nestjs/schedule` absent. `RedisModule`'s client sets `keyPrefix: 'sv:'`, which BullMQ forbids on its connection, and BullMQ wants `maxRetriesPerRequest: null` — so it needs its own connection options rather than the shared client. Until then, maintenance runs from `scripts/`. |
+| `SessionsService.updateActivity` | Cannot be wired at all today: the JWT payload carries no `sessionId`, so no request-scoped code knows which row to touch. `lastActivityAt` is therefore frozen at creation, which also makes `getActiveSessions`' `lastActivityAt` sort effectively a creation-time sort. Needs a token payload change. |
+| Session-based authorization | `JwtStrategy` checks `payload.type` and the Redis blacklist but never looks at `sessions`, so an ended session does not reject an otherwise-valid access token, and the refresh path never consults sessions either — `endAllUserSessions` on logout cannot stop a still-valid refresh token from minting a new access token. Making sessions authoritative changes auth behaviour and needs its own pass. |
+| No session expiry | The TTL index only covers rows with `endedAt` set (`partialFilterExpression`), so an abandoned session stays `isActive: true` forever. There is no idle timeout or absolute expiry field and no reaper. |
+| `hasHigherOrEqualRole`, `ADMIN_ROLES`, `USER_MANAGEMENT_ROLES` | Unused. `ROLE_HIERARCHY` itself is used, but only by `AdminService.validateRoleChange`. |
+| `FileProcessor.verifyFileIntegrity` | Read-only and safe, but misnamed: it checks blob *presence* only — no checksums, no GCM auth tags — and is hard-capped at the first 100 non-deleted rows with no cursor, so it samples rather than sweeps. Nothing calls it. |
 | `test/app.e2e-spec.ts` | Stale scaffold expecting `GET /` → `"Hello World!"`. Would fail; excluded because `jest.config.js` `testRegex` only matches `src/**/*.spec.ts`. |
-| `SessionsService` | Sessions are created only on certificate login. Password logins leave no session row, yet logout calls `endAllUserSessions`. `updateActivity` is never called. |
 
 ### 10.3 Correctness bugs
 
-- `POST /setup/generate-certificate` → `new Types.ObjectId('system')` throws `BSONError` (verified) → 500.
-- `CertificatesService.verifyCertificate` falls back to **loading every non-revoked certificate** and comparing normalized serials in application code when the exact-serial lookup misses. O(n) and unbounded — will degrade badly. Store a normalized serial column and index it.
-- `ShareService.listShares` with `search` re-queries the database once per result row to populate refs (N+1 on top of the aggregation).
-- `ShareSortField.FILE_NAME` silently falls back to `createdAt` in the non-search path.
-- `FileAccessValidationService.validateAccess` receives `fileId`/`userId` as strings and queries ObjectId fields. Mongoose casts valid 24-hex strings, but a **file UUID** would throw a `CastError`. Relevant once the service is actually wired in.
-- `RolesGuard` performs exact role matching despite `ROLE_HIERARCHY` existing — a `@Roles(Role.ADMIN)` route would lock out `SUPER_ADMIN`. All current routes list roles explicitly, so nothing is broken today.
+**Fixed**
+
+- ~~`POST /setup/generate-certificate` → `new Types.ObjectId('system')` throws `BSONError` → 500.~~ Certificates issued outside a session are attributed to `APP_CONSTANTS.SYSTEM_USER_ID` (the nil ObjectId); `CertificatesService.resolveOwnerId` accepts a 24-hex id or the `'system'` alias and raises a 400 for anything else.
+- ~~`verifyCertificate` loads every non-revoked certificate to compare normalized serials.~~ `certificates.serialNumberNormalized` is derived by a schema `pre('validate')` hook, indexed, and queried directly. Existing rows: `scripts/backfill-certificate-serials.ts`. Measured on MongoDB 7: `IXSCAN`, `totalDocsExamined: 1`.
+- ~~`ShareService.listShares` with `search` re-queries once per result row.~~ One `$facet` aggregation now returns rows and total with the file/owner/recipient refs joined by `$lookup` (user joins placed after `$skip`/`$limit`). Measured: 1 op regardless of result count, down from `2 + 4N` (402 ops at 100 rows).
+- ~~`ShareSortField.FILE_NAME` silently falls back to `createdAt`.~~ Name sort now routes through the same aggregation with `$sort` on `fileInfo.originalName` and an `en`/strength-2 collation, so ordering is case-insensitive. Row set is unchanged across sort options (`preserveNullAndEmptyArrays` keeps shares whose file document is missing).
+- ~~`validateAccess` would throw a `CastError` on a file UUID.~~ A 24-hex id is used directly; anything else resolves through the files collection with the standard `uuid` → `findById` dual-key lookup, and an unresolvable id denies access instead of throwing.
+- ~~Soft-deleted blobs are never removed from disk.~~ `scripts/cleanup-expired-files.ts` purges them after the 30-day retention window. Still manual — nothing schedules it.
+- ~~`forceChangePassword` returns a refresh token with no `refresh_tokens` row~~, so `/auth/refresh` rejected it. It now calls `storeRefreshToken`.
+- ~~No refresh-token re-use detection.~~ Re-presenting an already-rotated token now revokes every refresh token for that user and writes a `SUSPICIOUS_ACTIVITY` audit row, while returning the same generic 401 as an unknown token.
+
+**Still open**
+
+- `RolesGuard` performs exact role matching despite `ROLE_HIERARCHY` existing — a `@Roles(Role.ADMIN)` route would lock out `SUPER_ADMIN`. All current routes list roles explicitly, so nothing is broken today. See rule 9.
 - `MANAGER` and `VIEWER` have no endpoints gated to them; `MANAGER` only appears in the `department` file-access branch.
-- README drift: it documents `/setup/generate-certificate` as nonexistent, describes the PKI script as 9 steps (it's 11), claims RBAC hierarchy inheritance the guard doesn't implement, and omits the entire `/shares` API.
-- `package.json` contains bogus dependencies `"20"` and `"nvm"`.
-- `.env.production.example` has `NODE_ENV=development` and `JWT_ACCESS_EXPIRATION=24h` despite the name.
+- `AuthService.parseExpiration` only understands `^(\d+)([smhd])$` and silently defaults to 7 days, so a mis-set `JWT_REFRESH_EXPIRATION` yields a 7-day DB expiry regardless of what the JWT itself says.
+- The refresh path never verifies the JWT itself in the service layer — it treats the token as an opaque secret keyed by SHA-256. The route guard now covers signature/`exp`/`type`, but **rotating `JWT_REFRESH_SECRET` still does not invalidate outstanding rows** in `refresh_tokens`.
+- Device-pinned shares (`allowedDeviceCertificateId`) can never pass on download: nothing in the HTTP layer supplies a device certificate id, so `validateAccess` fails closed. `FilesService.downloadFile` takes an optional `deviceCertificateId` ready for that wiring. No share sets the field today.
+- File name search uses a case-insensitive `$regex`, which cannot use an index.
+- The file-name sort happens on a joined field, so it cannot use an index either — the matched set is sorted server-side in memory.
 
 ### 10.4 Test coverage
 
-`npx jest` → **3 suites, 44 tests, all passing** (~4 s). Every test is in `src/modules/shares/__tests__/` (`share.service.spec.ts`, `file-access-validation.service.spec.ts`, `shares.integration.spec.ts`) and uses mocked Mongoose models. **Auth, encryption, files, certificates, devices, setup, and admin have zero tests.** There is no integration test against a real MongoDB/Redis/Vault.
+`npx jest` → **7 suites, 89 tests, all passing** (~4 s), all with mocked Mongoose models. Covered: `shares/` (share service, access validation, search/sort pipeline, integration), `files/` (download authorization, owner/admin/share/no-grant, integrity check), `certificates/` (serial lookup, normalized-serial schema hook), `setup/` (`generate-certificate` via supertest).
+
+**Still zero tests:** encryption, storage, devices, admin, users, and the auth service — including the refresh-token rotation and re-use paths, which are the highest-value untested logic in the repo. There is no test against a real MongoDB/Redis/Vault; the aggregation pipeline, the normalized-serial backfill and the cleanup script were verified manually against a throwaway `mongo:7` container instead.
+
+### 10.5 Security items worth a dedicated pass
+
+Ranked. The first two outrank everything else in §10.
+
+1. **Certificate login has no proof of private-key possession.** `CertificateLoginDto` takes `certificate` + `deviceFingerprint` and no challenge or signature. The integrity check is `sha256(presented PEM)` compared to the stored fingerprint — but the PEM is public data, so anyone holding a copy of a user's certificate and their device fingerprint can authenticate as that user. Fixing this needs a signed-nonce exchange, which is a client protocol change.
+2. **Chain verification is soft-failed.** `CertificatesService.verifyCertificate` step 10 logs "In production, this should be a hard failure" and then returns `valid: true` anyway. Do not flip it without checking `VAULT_ENABLED` in the target environment (rule 23) — with Vault disabled the mock CA PEMs fail every chain check and would lock out all certificate logins.
+3. **CSR-to-certificate key binding is unverified.** The old always-true stub was deleted rather than implemented. Node has no PKCS#10 API (`crypto.X509Certificate` covers the cert side; `createPublicKey` rejects CSR PEMs), so a real check needs `@peculiar/x509` (`Pkcs10CertificateRequest`) or `node-forge`. `csrPem` *is* stored on the certificate row, so the comparison is possible. Note Vault PKI already binds the issued certificate to the CSR's public key when it signs, so this is defence-in-depth at issue time — it only becomes load-bearing if certificate PEMs can enter the system by a path other than `signAndStoreCertificate`.
+4. **Streaming downloads vs. integrity.** `downloadStream` cannot be used as designed: the GCM auth tag covers the whole file and is only verified at `decipher.final()`, and the SHA-256 check runs over the entire plaintext — both *after* every byte would already have been streamed to the client. The current guarantee is "no byte leaves until the whole file verifies". Streaming requires either accepting verify-after-delivery with a destroyed socket on failure, or moving to chunked/framed AEAD, which changes `encryptionIv`/`encryptionAuthTag`/`checksum` to per-chunk values and needs migration of existing files. Both paths also buffer the file twice in memory today (ciphertext + plaintext).
 
 ---
 
@@ -486,12 +538,15 @@ Rules for anyone — human or agent — changing this codebase.
 3. **`EncryptionService.rotateKey()` only replaces the in-memory KEK and the Vault copy — it does NOT re-encrypt existing DEKs**, despite the docstring. Calling it in production orphans every existing file. Do not call it until re-wrapping is implemented.
 4. **Keep the post-decryption checksum comparison** in `downloadFile`. It is the only tamper/corruption detection in the system.
 5. **Never store a raw refresh token.** Always `sha256(token)` before writing to or reading from `refresh_tokens`.
+5b. **`scripts/cleanup-expired-files.ts` is irreversible.** It deletes the blob *and* the metadata row holding `encryptedDek` / `encryptionIv` / `encryptionAuthTag`, so a purged file cannot be decrypted even if the ciphertext is restored from a backup. Keep the three safeguards: `dryRun` is a required argument (no default), every purge writes its audit row *before* the delete, and runs are capped by `limit`. Always dry-run first — `--confirm` is what actually deletes.
 
 ### Auth and authorization
 
 6. **`JwtAuthGuard` is global.** Adding a controller automatically protects it. Adding `@Public()` removes *all* authentication — justify every use.
 7. **Keep the `payload.type` check** in both JWT strategies. Without it a refresh token becomes a valid access token.
 8. **Keep the Redis blacklist check** in `JwtStrategy.validate`. Removing it makes logout cosmetic.
+8b. **`/auth/refresh` must keep both `@Public()` and `@UseGuards(JwtRefreshGuard)`.** Global guards run before route guards, so dropping `@Public()` makes the endpoint demand an access token and breaks refresh entirely; dropping the route guard removes the only signature / `exp` / `type` verification of the refresh token, since the service just matches a SHA-256 hash.
+8c. **Keep refresh-token re-use detection.** `refreshTokens` deliberately fetches revoked rows too: a token presented after rotation revokes the user's whole token set. Filtering on `isRevoked: false` in the lookup would silently restore the old behaviour where a leaked token is indistinguishable from an unknown one. Keep the failure message identical across all rejection branches.
 9. **`RolesGuard` is exact-match, not hierarchical.** Always list every permitted role: `@Roles(Role.SUPER_ADMIN, Role.ADMIN)`. If you convert it to hierarchical matching, audit every existing `@Roles` decorator first.
 10. **Never trust client-supplied ownership or identity.** `ShareService.shareFile` deliberately loads the file and compares `uploadedBy` against `req.user.userId`. `FilesService.findFileWithAccessCheck` is the single access gate for files — route all new file operations through it.
 11. **Preserve the self-protection checks** in `AdminService`: no self-deactivation, no self-role-change, and `validateRoleChange`'s strict "below your own level" rule.
@@ -504,13 +559,18 @@ Rules for anyone — human or agent — changing this codebase.
 15. **`autoIndex` is off in production.** Any new index must be created explicitly during deployment.
 16. IDs are dual-keyed: `files`, `devices`, `certificates`, and `sessions` each have a business UUID *and* a Mongo `_id`, and several lookups try both. Keep the `try { findById } catch {}` pattern when adding resolvers — an invalid ObjectId string throws.
 
+16b. **Audit `action` values come from the `AuditAction` enum, never from request data.** `AuditService.findAll` filters on those values, and the admin audit API is the consumer. An interceptor deriving actions from URLs was removed for exactly this reason — do not reintroduce a parallel taxonomy.
+16c. **Audit failure branches too, but keep responses generic.** `LOGIN_FAILURE` records *why* in `metadata.reason` while the HTTP response stays a plain "Invalid credentials", so the audit trail is useful without enabling account enumeration.
+
 ### Process
 
 17. **Never commit `.env` or `.env.production.example`.** The latter currently contains real secrets and is untracked — keep it that way.
 18. **`npm run lint` runs `eslint --fix` and rewrites source files.** Use `npx eslint <paths>` (no `--fix`) when you only want to inspect.
-19. **`npm run build` deletes `dist/` before compiling and currently fails.** The committed `dist/` holds a fix for `app.config.ts` that is missing from `src/` — back up `dist/` before building, and port `resolveAppVersion()` into `src/config/app.config.ts` before relying on a fresh build.
-20. **Fix the two `audit.service.ts` type errors and the 11 `require-await` lint errors first** if you need CI or Docker to succeed. Nothing else in the pipeline can pass until then.
+19. **`npm run build` deletes `dist/` before compiling** (`nest-cli.json` sets `deleteOutDir: true`), so a failed build leaves no output. `dist/` is gitignored and no longer ahead of `src/`. Keep `"scripts"` in `tsconfig.build.json`'s `exclude` — without it TypeScript raises the inferred `rootDir` and emits `dist/src/main.js`, which breaks both `start:prod` and the Dockerfile.
+20. **Keep `app.useLogger()` in `main.ts`.** `bufferLogs: true` holds startup logs until a logger is attached; removing the `useLogger` call silently reverts to the default console logger and makes `LOG_LEVEL` / `LOG_DIR` inert again.
 21. **Env changes go in two places:** the Zod schema in `src/config/env.validation.ts` *and* the relevant `src/config/*.config.ts` factory. The app will refuse to boot on an unrecognised-but-invalid value, and a variable missing from the schema is silently unavailable.
 22. **Vault dev mode loses all data on container restart.** After `docker compose down -v`, re-run `npx ts-node scripts/setup-vault-pki.ts` or certificate signing and KEK loading will fall back to mock/derived values.
 23. **Do not "fix" `verifyCertificate` step 10 into a hard failure without checking `VAULT_ENABLED`** in the target environment — with Vault disabled the mock CA PEMs will fail every chain check and lock out all certificate logins.
-24. **Wiring `FileAccessValidationService` into the download path is the intended next step.** When you do it, remember `FilesService.findFileWithAccessCheck` must let owners and admins through *before* the share lookup, and `recordDownload()` must be called only after a successful transfer.
+24. **Preserve the access-check ordering in `FilesService.findFileWithAccessCheck`:** owner and ADMIN/SUPER_ADMIN pass through *before* any share lookup → then the file's own `accessLevel` rules → then `FileAccessValidationService.validateAccess`. Reordering either grants access the accessLevel table does not, or floods the audit trail with false `access_denied` rows for files that are readable anyway.
+25. **`recordDownload()` runs only after the bytes are delivered.** `downloadFile` returns the authorizing share instead of consuming quota; the controller calls `recordShareDownload` from `res.once('finish')`, which does not fire on an aborted transfer. Never move it into the service — a failed download would burn a one-time share.
+26. **`serialNumberNormalized` is derived by the schema hook, never set by hand.** It must stay identical to `CertificateUtil.normalizeSerialNumber`; a test pins the two together. The index is intentionally non-unique — `serialNumber` already carries uniqueness, and a unique index would reject the nulls on pre-backfill rows.

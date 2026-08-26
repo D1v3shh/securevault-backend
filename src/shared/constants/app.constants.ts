@@ -41,6 +41,18 @@ export const APP_CONSTANTS = {
   /** Human-readable alias callers may pass instead of SYSTEM_USER_ID. */
   SYSTEM_USER_ALIAS: 'system',
 
+  /**
+   * `deviceId` recorded for sessions created by a password login.
+   *
+   * Password logins have no enrolled device to attribute the session to, but
+   * `sessions.deviceId` is required. Because createSession deactivates existing
+   * sessions for the same (userId, deviceId), using one constant means a user
+   * holds at most one active password session at a time — a new password login
+   * supersedes the previous one. Certificate sessions are unaffected: they key
+   * off the real enrolled deviceId.
+   */
+  PASSWORD_SESSION_DEVICE_ID: 'password-login',
+
   /** Default pagination */
   DEFAULT_PAGE: 1,
   DEFAULT_PAGE_SIZE: 20,

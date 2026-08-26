@@ -130,28 +130,13 @@ export class CertificateUtil {
     return info?.serialNumber || null;
   }
 
-  /**
-   * Check if the certificate's public key matches the CSR's public key.
-   */
-  static certificateMatchesCsr(certPem: string, csrPem: string): boolean {
-    try {
-      const cert = new crypto.X509Certificate(certPem);
-      const certPubKeyDer = cert.publicKey.export({
-        type: 'spki',
-        format: 'der',
-      });
-      const certPubKeyHash = crypto
-        .createHash('sha256')
-        .update(certPubKeyDer)
-        .digest('hex');
-
-      // For CSR, we'd need to parse it — simplified check
-      // In production, use @peculiar/x509 or forge for full CSR parsing
-      return certPubKeyHash.length > 0; // Simplified - actual impl would compare keys
-    } catch {
-      return false;
-    }
-  }
+  // NOTE: a `certificateMatchesCsr(certPem, csrPem)` helper used to live here.
+  // It never parsed the CSR — it returned `hash.length > 0`, i.e. always true —
+  // and had no callers, so it was removed rather than left as a security
+  // predicate that silently passes. Implementing it for real needs a PKCS#10
+  // parser (Node has no CSR API), and Vault PKI already binds the issued
+  // certificate to the CSR's public key when it signs. See the technical debt
+  // section of PROJECT_CONTEXT.md.
 
   /**
    * Generate a device fingerprint from hardware identifiers.

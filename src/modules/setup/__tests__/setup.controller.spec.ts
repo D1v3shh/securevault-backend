@@ -10,6 +10,7 @@ import { CertificateEntity } from '../../certificates/schemas/certificate.schema
 import { CertificateRevocationEntity } from '../../certificates/schemas/certificate-revocation.schema';
 import { VaultPkiService } from '../../vault/vault-pki.service';
 import { DevicesService } from '../../devices/devices.service';
+import { SessionsService } from '../../sessions/sessions.service';
 import { GlobalExceptionFilter } from '../../../common/filters/http-exception.filter';
 import { APP_CONSTANTS } from '../../../shared/constants/app.constants';
 
@@ -68,6 +69,12 @@ describe('SetupController — POST /setup/generate-certificate', () => {
           },
         },
         { provide: DevicesService, useValue: devicesService },
+        {
+          provide: SessionsService,
+          useValue: {
+            endDeviceSessions: jest.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
 

@@ -62,13 +62,6 @@ export class AppLoggerService implements NestLoggerService {
           maxsize: 10 * 1024 * 1024,
           maxFiles: 20,
         }),
-        new winston.transports.File({
-          filename: path.join(logDir, 'audit.log'),
-          level: 'info',
-          format: winston.format.combine(...formats, winston.format.json()),
-          maxsize: 10 * 1024 * 1024,
-          maxFiles: 30,
-        }),
       );
     }
 
@@ -80,30 +73,83 @@ export class AppLoggerService implements NestLoggerService {
     });
   }
 
-  log(message: string, context?: string): void {
-    this.logger.info(message, { context });
+  // Nest calls loggers as `method(message, ...optionalParams)`, where the
+  // trailing params carry the context and — for error/fatal — a stack trace.
+  // Fixed (message, trace, context) signatures mis-file the context as a stack
+  // whenever Nest passes only (message, context), which is the common case.
+
+  log(message: unknown, ...optionalParams: unknown[]): void {
+    const { context } = this.splitParams(optionalParams);
+    this.logger.info(this.asText(message), { context });
   }
 
-  error(message: string, trace?: string, context?: string): void {
-    this.logger.error(message, { trace, context });
+  error(message: unknown, ...optionalParams: unknown[]): void {
+    const { context, stack } = this.splitParams(optionalParams);
+    this.logger.error(this.asText(message), { context, trace: stack });
   }
 
-  warn(message: string, context?: string): void {
-    this.logger.warn(message, { context });
+  warn(message: unknown, ...optionalParams: unknown[]): void {
+    const { context } = this.splitParams(optionalParams);
+    this.logger.warn(this.asText(message), { context });
   }
 
-  debug(message: string, context?: string): void {
-    this.logger.debug(message, { context });
+  debug(message: unknown, ...optionalParams: unknown[]): void {
+    const { context } = this.splitParams(optionalParams);
+    this.logger.debug(this.asText(message), { context });
   }
 
-  verbose(message: string, context?: string): void {
-    this.logger.verbose(message, { context });
+  verbose(message: unknown, ...optionalParams: unknown[]): void {
+    const { context } = this.splitParams(optionalParams);
+    this.logger.verbose(this.asText(message), { context });
   }
 
   /**
-   * Log an audit event with structured metadata.
+   * Nest 11 calls this for unrecoverable errors. Winston's npm levels have no
+   * `fatal`, so it is recorded at `error` with a flag rather than dropped —
+   * which is what happened before, since the method did not exist.
    */
-  audit(action: string, metadata: Record<string, any>, context?: string): void {
-    this.logger.info(`AUDIT: ${action}`, { ...metadata, context, audit: true });
+  fatal(message: unknown, ...optionalParams: unknown[]): void {
+    const { context, stack } = this.splitParams(optionalParams);
+    this.logger.error(this.asText(message), {
+      context,
+      trace: stack,
+      fatal: true,
+    });
+  }
+
+  /**
+   * Split Nest's trailing params into context and stack trace.
+   *
+   * With one param it is the context, unless it spans multiple lines — that is
+   * a stack. With two or more, Nest's own convention applies: the last is the
+   * context and the one before it the stack.
+   */
+  private splitParams(params: unknown[]): { context?: string; stack?: string } {
+    if (params.length === 0) {
+      return {};
+    }
+
+    if (params.length === 1) {
+      const only = this.asText(params[0]);
+      return only.includes('\n') ? { stack: only } : { context: only };
+    }
+
+    const last = params[params.length - 1];
+    const beforeLast = params[params.length - 2];
+
+    return {
+      context: last === undefined ? undefined : this.asText(last),
+      stack: beforeLast === undefined ? undefined : this.asText(beforeLast),
+    };
+  }
+
+  private asText(value: unknown): string {
+    if (typeof value === 'string') return value;
+    if (value instanceof Error) return value.stack ?? value.message;
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
   }
 }

@@ -19,6 +19,7 @@ import { AdminModule } from './modules/admin/admin.module';
 import { HealthModule } from './modules/health/health.module';
 import { QueueModule } from './modules/queue/queue.module';
 import { RedisModule } from './modules/redis/redis.module';
+import { LoggerModule } from './shared/logger/logger.module';
 
 // ─── New PKI / Enrollment Modules ────────────────────
 import { DevicesModule } from './modules/devices/devices.module';
@@ -60,6 +61,7 @@ import { UsersService } from './modules/users/users.service';
     }),
 
     // ─── Infrastructure ─────────────────────────────
+    LoggerModule,
     RedisModule,
     DatabaseModule,
     VaultModule,
