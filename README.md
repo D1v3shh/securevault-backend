@@ -20,7 +20,7 @@
 - [API Reference](#api-reference)
 - [Architecture](#architecture)
 - [Security](#security)
-- [Role Hierarchy (RBAC)](#role-hierarchy-rbac)
+- [Roles (RBAC)](#roles-rbac)
 - [Environment Variables](#environment-variables)
 - [Scripts](#scripts)
 - [Troubleshooting](#troubleshooting)
@@ -31,16 +31,17 @@
 ## Features
 
 - **JWT Authentication** — Access/refresh token rotation with Redis-backed blacklisting
-- **RBAC** — 5-tier role hierarchy: `SUPER_ADMIN` → `ADMIN` → `MANAGER` → `EMPLOYEE` → `VIEWER`
+- **RBAC** — 5 roles (`SUPER_ADMIN`, `ADMIN`, `MANAGER`, `EMPLOYEE`, `VIEWER`) enforced by **exact match**, not inheritance — see [Roles (RBAC)](#roles-rbac)
 - **Envelope Encryption** — AES-256-GCM per-file DEKs encrypted by a Vault-managed KEK
 - **HashiCorp Vault PKI** — X.509 certificate signing for device trust
 - **Device Enrollment** — Token-based onboarding with fingerprint verification
 - **Encrypted File Storage** — Files encrypted at rest with SHA-256 integrity checksums
 - **Admin User Management** — Create accounts, assign roles, force password resets
 - **Audit Logging** — Every sensitive operation tracked with user, IP, and metadata
+- **File Sharing** — User-to-user shares with expiry, permission levels, download caps, one-time access and device pinning
 - **Rate Limiting** — Configurable via `@nestjs/throttler`
 - **Swagger Docs** — Auto-generated OpenAPI documentation
-- **Background Processing** — BullMQ queues for async audit logging and file cleanup
+- **Maintenance Scripts** — Retention-based purge of soft-deleted files, run manually (there is no scheduler or queue worker — see [Scripts](#scripts))
 - **Health Checks** — MongoDB, Redis, Vault connectivity monitoring
 
 ---
@@ -51,11 +52,11 @@
 |-------|------------|
 | **Runtime** | Node.js ≥ 20.x |
 | **Framework** | NestJS 11 |
-| **Language** | TypeScript 5.x (strict mode) |
+| **Language** | TypeScript 5.x (`strictNullChecks` + `noImplicitAny`; full `strict` is off) |
 | **Database** | MongoDB 7 via Mongoose 9 |
 | **Cache** | Redis 7 via ioredis |
 | **Secrets** | HashiCorp Vault 1.15 |
-| **Queue** | BullMQ (Redis-backed) |
+| **Logging** | winston via `AppLoggerService` (`app.useLogger`) |
 | **Auth** | Passport.js + JWT |
 | **Validation** | class-validator + Zod (env) |
 | **API Docs** | Swagger / OpenAPI |
@@ -87,7 +88,7 @@ cd securevault-backend
 npm install
 ```
 
-**What happens:** Installs all Node.js dependencies (~676 packages).
+**What happens:** Installs all Node.js dependencies.
 
 ### Step 2 — Start Infrastructure
 
@@ -102,7 +103,7 @@ This starts three containers:
 | Service | Port | Container Name | Purpose |
 |---------|------|----------------|---------|
 | MongoDB 7 | `27017` | `securevault-mongo` | Primary database |
-| Redis 7 | `6379` | `securevault-redis` | Token blacklisting, caching, BullMQ |
+| Redis 7 | `6379` | `securevault-redis` | Token blacklisting, caching |
 | Vault 1.15 | `8200` | `securevault-vault` | Secrets management & PKI |
 
 Verify all three are running:
@@ -155,7 +156,7 @@ The PKI engine powers device certificate issuance. Run the setup script **after 
 npx ts-node scripts/setup-vault-pki.ts
 ```
 
-**What this does (9 steps):**
+**What this does (11 steps)** — steps 1–9 set up PKI, steps 10–11 set up the Transit engine:
 1. Enables the PKI secrets engine (root)
 2. Generates a Root CA (`CN=SecureVault Root CA`, RSA 4096-bit)
 3. Configures Root CA URLs (issuing certificates + CRL)
@@ -165,14 +166,18 @@ npx ts-node scripts/setup-vault-pki.ts
 7. Installs the signed Intermediate certificate
 8. Configures Intermediate CA URLs
 9. Creates the `securevault-device` PKI role for issuing client certificates
+10. Enables the Transit secrets engine
+11. Creates the `securevault-key` Transit key
 
 You should see:
 
 ```
 🔐 Setting up Vault PKI at http://localhost:8200
 ...
-✅ Vault PKI setup complete!
+✅ Vault PKI and Transit setup complete!
 ```
+
+> `scripts/setup-transit.ts` does steps 10–11 on their own, if you only need the Transit engine.
 
 > **Note:** Vault runs in dev mode — data is lost on container restart. Re-run this script after `docker compose down -v`.
 
@@ -304,72 +309,121 @@ curl -X GET http://localhost:3000/api/v1/files/<file_id>/download \
   --output downloaded_file.pdf
 ```
 
+### 7. Share the File With Another User
+
+```bash
+curl -X POST http://localhost:3000/api/v1/shares \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d '{
+    "fileId": "<file_uuid_from_step_5>",
+    "sharedWithUserId": "<user_id_from_step_2>",
+    "permission": "DOWNLOAD",
+    "expiresAt": "2026-12-31T23:59:59.000Z",
+    "maxDownloads": 5
+  }'
+```
+
+The recipient then sees it via `GET /shares/shared-with-me` and can download it with the same `GET /files/:id/download` call — the share grant is what authorizes them, since they are not the owner.
+
 ---
 
 ## API Reference
 
 All endpoints are prefixed with `/api/v1`. Authentication required unless marked **Public**.
 
+The **Auth** column lists the roles that are actually accepted. `RolesGuard` matches roles exactly, so a route accepting `SUPER_ADMIN, ADMIN` lists both — there is no implicit inheritance. Routes marked *Any role* require a valid access token but no specific role.
+
 ### Authentication
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
 | `POST` | `/auth/login` | Login with email + password | Public |
-| `POST` | `/auth/refresh` | Refresh access token | Public |
-| `POST` | `/auth/certificate-login` | Passwordless cert login | Public |
-| `POST` | `/auth/logout` | Revoke tokens | Required |
-| `POST` | `/auth/change-password` | Change own password | Required |
-| `POST` | `/auth/force-change-password` | First-login password change | Required |
+| `POST` | `/auth/certificate-login` | Passwordless X.509 certificate login | Public |
+| `POST` | `/auth/refresh` | Rotate refresh token → new token pair | Public + `JwtRefreshGuard` |
+| `POST` | `/auth/logout` | Blacklist access token, revoke refresh token, end sessions | Any role |
+| `POST` | `/auth/change-password` | Change own password | Any role |
+| `POST` | `/auth/force-change-password` | First-login password change | Any role |
+
+`/auth/refresh` is `@Public()` (no access token needed) but guarded by `JwtRefreshGuard`, which verifies the refresh token's signature, expiry and `type` claim. Re-presenting an already-rotated token revokes every refresh token for that user.
 
 ### Admin — User & Device Management
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| `POST` | `/admin/create-user` | Create a new user | ADMIN+ |
-| `POST` | `/admin/create-enrollment-token` | Issue enrollment token | ADMIN+ |
-| `GET` | `/admin/users` | List all users (paginated) | ADMIN+ |
-| `GET` | `/admin/devices` | List all devices | ADMIN+ |
-| `GET` | `/admin/audit-logs` | View audit logs | ADMIN+ |
-| `POST` | `/admin/users/:id/activate` | Activate user | ADMIN+ |
-| `POST` | `/admin/users/:id/deactivate` | Deactivate user | ADMIN+ |
-| `POST` | `/admin/users/:id/reset-password` | Reset user password | ADMIN+ |
-| `PATCH` | `/admin/users/:id/role` | Change user role | SUPER_ADMIN |
+| `POST` | `/admin/create-user` | Create a new user account | `SUPER_ADMIN, ADMIN` |
+| `POST` | `/admin/users` | Create a new user account (alias of the above) | `SUPER_ADMIN, ADMIN` |
+| `GET` | `/admin/users` | List users (paginated, filterable) | `SUPER_ADMIN, ADMIN` |
+| `GET` | `/admin/users/:id` | Get user details by ID | `SUPER_ADMIN, ADMIN` |
+| `PATCH` | `/admin/users/:id` | Update user details | `SUPER_ADMIN, ADMIN` |
+| `POST` | `/admin/users/:id/activate` | Activate user | `SUPER_ADMIN, ADMIN` |
+| `POST` | `/admin/users/:id/deactivate` | Deactivate user | `SUPER_ADMIN, ADMIN` |
+| `POST` | `/admin/users/:id/reset-password` | Reset password (returns a temporary one) | `SUPER_ADMIN, ADMIN` |
+| `PATCH` | `/admin/users/:id/role` | Change user role | `SUPER_ADMIN` only |
+| `POST` | `/admin/create-enrollment-token` | Issue a device enrollment token | `SUPER_ADMIN, ADMIN` |
+| `GET` | `/admin/devices` | List all registered devices | `SUPER_ADMIN, ADMIN` |
+| `GET` | `/admin/audit-logs` | View audit logs | `SUPER_ADMIN, ADMIN` |
 
-### Setup — Device Enrollment
+`PATCH /admin/users/:id/role` is additionally constrained in `AdminService.validateRoleChange`: you may only assign a role strictly below your own, and you cannot change your own role.
+
+### Setup — Device Enrollment (SetupApp-facing, all public)
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| `POST` | `/setup/verify-token` | Validate enrollment token | Public |
+| `POST` | `/setup/verify-token` | Validate an enrollment token before enrolling | Public |
 | `POST` | `/setup/enroll` | Enroll device + issue certificate | Public |
-| `POST` | `/setup/renew-certificate` | Renew device certificate | Public |
+| `POST` | `/setup/generate-certificate` | Sign a CSR outside the enrollment flow | Public |
+| `POST` | `/setup/renew-certificate` | Renew a device certificate | Public |
+
+`POST /setup/generate-certificate` signs a CSR and stores the certificate without an enrollment token. It is `@Public()` and rate-limited to 3 requests/minute; certificates issued this way are attributed to a reserved system user rather than a real account.
 
 ### Certificates
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| `POST` | `/certificates/verify` | Verify a certificate | Public |
-| `POST` | `/certificates/revoke` | Revoke a certificate | Required |
-| `GET` | `/certificates/:serial` | Get certificate details | Required |
-| `GET` | `/certificates/status/:serial` | Get certificate status | Required |
+| `POST` | `/certificates/verify` | Verify a presented certificate | Public |
+| `POST` | `/certificates/revoke` | Revoke a certificate (also ends that device's sessions) | `SUPER_ADMIN, ADMIN` |
+| `GET` | `/certificates/:serial` | Get certificate details | Any role |
+| `GET` | `/certificates/status/:serial` | Get certificate status | Any role |
 
 ### Devices
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| `POST` | `/devices/register` | Register a device | Required |
-| `GET` | `/devices/me` | List own devices | Required |
-| `GET` | `/devices/:id` | Get device details | Required |
-| `PATCH` | `/devices/:id/status` | Update device status | ADMIN+ |
+| `POST` | `/devices/register` | Register a device | Any role |
+| `GET` | `/devices/me` | List own devices | Any role |
+| `GET` | `/devices/:id` | Get device details | Any role |
+| `PATCH` | `/devices/:id/status` | Approve / revoke / block a device | `SUPER_ADMIN, ADMIN` |
+
+Revoking or blocking a device ends its active sessions.
 
 ### Files
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| `POST` | `/files/upload` | Upload and encrypt a file | Required |
-| `GET` | `/files` | List own files (paginated) | Required |
-| `GET` | `/files/:id` | Get file metadata | Required |
-| `GET` | `/files/:id/download` | Download and decrypt | Required |
-| `DELETE` | `/files/:id` | Soft delete a file | Required |
+| `POST` | `/files/upload` | Upload and encrypt a file | Any role |
+| `GET` | `/files` | List accessible files (paginated) | Any role |
+| `GET` | `/files/:id` | Get file metadata | Any role |
+| `GET` | `/files/:id/download` | Download and decrypt | Any role |
+| `DELETE` | `/files/:id` | Soft delete a file | Owner or `SUPER_ADMIN, ADMIN` |
+
+File read access is decided per file, in this order: the **owner** and `SUPER_ADMIN` / `ADMIN` always pass; then the file's own `accessLevel` (`internal` and `public` are readable by any authenticated user, `department` additionally by `MANAGER`); then, for everyone else, an active share grant. Anything else is a 403.
+
+### Shares — File Sharing
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| `POST` | `/shares` | Share one of your files with another user | Any role (file owner) |
+| `GET` | `/shares/shared-with-me` | List files shared with you (paginated) | Any role |
+| `GET` | `/shares/shared-by-me` | List files you have shared (paginated) | Any role |
+| `GET` | `/shares/:shareId` | Get details of a specific share | Owner or recipient |
+| `DELETE` | `/shares/:shareId` | Revoke a share | Any role (file owner) |
+
+Creating a share requires `fileId`, `sharedWithUserId`, `permission` and a future `expiresAt`. Ownership is read from the database, never trusted from the request. Optional enterprise controls: `maxDownloads`, `oneTimeAccess`, `watermarkEnabled` and `allowedDeviceCertificateId` (device pinning).
+
+Permission levels are ordered `VIEW` < `DOWNLOAD` < `EDIT` < `FULL_ACCESS`: a `VIEW` share exposes metadata but will not authorize a download. Shares expire lazily — an expired share flips to `EXPIRED` on the next access attempt. A completed download counts against `maxDownloads` only after the transfer finishes.
+
+Both list endpoints accept `page`, `limit`, `status`, `sortBy` (`createdAt`, `expiresAt`, `fileName`), `sortOrder` and `search` (matches file name).
 
 ### Users — Self Service
 
@@ -406,15 +460,15 @@ src/
     ├── vault/                     # HashiCorp Vault integration
     ├── storage/                   # Storage abstraction (local, S3-ready)
     ├── audit/                     # Audit logging with structured events
-    ├── queue/                     # Background processors (audit, files)
+    ├── queue/                     # FileProcessor — retention purge + orphan check, invoked by scripts/
     ├── health/                    # Health check endpoints
     ├── redis/                     # Global Redis client provider
     ├── database/                  # MongoDB connection module
     ├── devices/                   # Device trust management
     ├── certificates/              # X.509 certificate operations
     ├── setup/                     # Device enrollment (SetupApp)
-    ├── sessions/                  # Session management
-    └── shares/                    # File sharing
+    ├── sessions/                  # Session records (certificate + password logins)
+    └── shares/                    # File sharing with expiry, caps, device pinning
 ```
 
 ---
@@ -440,19 +494,34 @@ src/
 
 ---
 
-## Role Hierarchy (RBAC)
+## Roles (RBAC)
 
+There are five roles. **`RolesGuard` matches roles exactly — it does not implement inheritance.**
+
+| Role | Level | What it can reach today |
+|------|-------|-------------------------|
+| `SUPER_ADMIN` | 100 | Everything below, plus `PATCH /admin/users/:id/role` |
+| `ADMIN` | 80 | All `/admin` routes except role changes, certificate revoke, device status |
+| `MANAGER` | 60 | No dedicated routes; only grants read access to `department`-level files |
+| `EMPLOYEE` | 40 | Files, shares, devices, self-service |
+| `VIEWER` | 20 | Same routes as `EMPLOYEE` — no route-level restriction exists yet |
+
+### What "exact match" means in practice
+
+`RolesGuard` is a plain `requiredRoles.includes(user.role)` check. A route decorated `@Roles(Role.ADMIN)` would reject a `SUPER_ADMIN` request, because `SUPER_ADMIN` is not in the list. Nothing is broken today only because every route that needs both lists both:
+
+```ts
+@Roles(Role.SUPER_ADMIN, Role.ADMIN)   // correct — both listed
+@Roles(Role.ADMIN)                     // would lock out SUPER_ADMIN
 ```
-SUPER_ADMIN (100)  ──  Full system access, can change roles
-      │
-   ADMIN (80)      ──  User management, audit logs, device approval
-      │
-  MANAGER (60)     ──  Team-level management
-      │
-  EMPLOYEE (40)    ──  File upload/download, self-service
-      │
-   VIEWER (20)     ──  Read-only access
-```
+
+**When adding a route, list every permitted role explicitly.** Do not rely on the level numbers above to grant access.
+
+The `Level` column comes from `ROLE_HIERARCHY`, which has exactly one runtime consumer: `AdminService.validateRoleChange`, where it enforces that you may only assign a role strictly below your own. It plays no part in route authorization.
+
+### Not yet implemented
+
+A `Permission` enum and a `ROLE_PERMISSIONS` matrix exist in `src/modules/permissions/`, along with a `PermissionsService` and a `permissions` collection. **Nothing reads them at runtime** — they are a design sketch for a future permission-based model. Route access is decided solely by `@Roles` + `RolesGuard`, plus ownership and share checks inside the file services.
 
 ---
 
@@ -485,20 +554,40 @@ npm run build              # Compile TypeScript → dist/
 npm run start:prod         # Run compiled dist/main.js
 
 # Code Quality
-npm run lint               # ESLint with auto-fix
+npm run lint               # ESLint — note: includes --fix and rewrites source files
+npx eslint "src/**/*.ts"   # Inspect only, no rewriting
 npm run format             # Prettier formatting
 
 # Testing
-npm run test               # Unit tests
+npm run test               # Unit/service tests — src/**/*.spec.ts, no external services needed
 npm run test:watch         # Watch mode
 npm run test:cov           # Coverage report
-npm run test:e2e           # End-to-end tests
+npm run test:e2e           # HTTP smoke tests — test/*.e2e-spec.ts (Mongo/Redis/Vault stubbed)
 
 # Infrastructure
 docker compose up -d       # Start MongoDB, Redis, Vault
 docker compose down        # Stop services
 docker compose down -v     # Stop + delete all data (clean reset)
+
+# One-off maintenance (run manually — there is no scheduler)
+npx ts-node scripts/setup-vault-pki.ts              # Root + Intermediate CA, device role, Transit (11 steps)
+npx ts-node scripts/setup-transit.ts                # Transit engine + securevault-key only
+npx ts-node scripts/backfill-certificate-serials.ts # Populate certificates.serialNumberNormalized + index
+npx ts-node scripts/cleanup-expired-files.ts        # DRY RUN: list files soft-deleted >30 days
 ```
+
+### Purging soft-deleted files
+
+`DELETE /files/:id` is a **soft** delete: the row is flagged and the encrypted blob stays on disk. Nothing removes it automatically — no cron, no queue worker. Purging is a manual, deliberate step:
+
+```bash
+npx ts-node scripts/cleanup-expired-files.ts                     # dry run (default)
+npx ts-node scripts/cleanup-expired-files.ts --limit=25           # dry run, first 25
+npx ts-node scripts/cleanup-expired-files.ts --confirm            # actually purge
+npx ts-node scripts/cleanup-expired-files.ts --confirm --performed-by=<userId>
+```
+
+> **This is irreversible.** It deletes the blob *and* the metadata row holding the wrapped per-file key, so a purged file cannot be decrypted even if the ciphertext is restored from a backup. Only files soft-deleted more than 30 days ago are eligible, runs are capped (default 100 files), and every purge writes an audit entry before deleting. Always dry-run first.
 
 ---
 

@@ -160,7 +160,7 @@ scripts/setup-transit.ts     Transit engine + securevault-key only (idempotent)
 scripts/backfill-certificate-serials.ts  Populates certificates.serialNumberNormalized + its index (idempotent)
 scripts/cleanup-expired-files.ts         Purges files soft-deleted >30 days; DRY RUN unless --confirm
 postman/                     Postman collection — covers auth, admin, setup, certificates, devices
-test/app.e2e-spec.ts         Stale Nest scaffold, would fail; excluded from `npm test`
+test/health.e2e-spec.ts      HTTP smoke test: prefix, response envelope, deny-by-default, token checks (npm run test:e2e)
 ```
 
 ---
@@ -485,7 +485,7 @@ Each item below was reviewed and either wired in, deleted, or accepted as debt.
 | No session expiry | The TTL index only covers rows with `endedAt` set (`partialFilterExpression`), so an abandoned session stays `isActive: true` forever. There is no idle timeout or absolute expiry field and no reaper. |
 | `hasHigherOrEqualRole`, `ADMIN_ROLES`, `USER_MANAGEMENT_ROLES` | Unused. `ROLE_HIERARCHY` itself is used, but only by `AdminService.validateRoleChange`. |
 | `FileProcessor.verifyFileIntegrity` | Read-only and safe, but misnamed: it checks blob *presence* only — no checksums, no GCM auth tags — and is hard-capped at the first 100 non-deleted rows with no cursor, so it samples rather than sweeps. Nothing calls it. |
-| `test/app.e2e-spec.ts` | Stale scaffold expecting `GET /` → `"Hello World!"`. Would fail; excluded because `jest.config.js` `testRegex` only matches `src/**/*.spec.ts`. |
+| ~~`test/app.e2e-spec.ts`~~ | Deleted. The stale scaffold expected `GET /` → `"Hello World!"`, a route that never existed. Replaced by `test/health.e2e-spec.ts`, and the unit/e2e split is now explicit — see §10.4. |
 
 ### 10.3 Correctness bugs
 
@@ -512,9 +512,22 @@ Each item below was reviewed and either wired in, deleted, or accepted as debt.
 
 ### 10.4 Test coverage
 
-`npx jest` → **7 suites, 89 tests, all passing** (~4 s), all with mocked Mongoose models. Covered: `shares/` (share service, access validation, search/sort pipeline, integration), `files/` (download authorization, owner/admin/share/no-grant, integrity check), `certificates/` (serial lookup, normalized-serial schema hook), `setup/` (`generate-certificate` via supertest).
+Two suites, run separately and deliberately:
 
-**Still zero tests:** encryption, storage, devices, admin, users, and the auth service — including the refresh-token rotation and re-use paths, which are the highest-value untested logic in the repo. There is no test against a real MongoDB/Redis/Vault; the aggregation pipeline, the normalized-serial backfill and the cleanup script were verified manually against a throwaway `mongo:7` container instead.
+| Command | Config | Scope | Status |
+|---|---|---|---|
+| `npm test` | `jest.config.js` | `src/**/*.spec.ts` — unit/service level, mocked Mongoose models, no external services | **13 suites, 174 tests** (~5 s) |
+| `npm run test:e2e` | `test/jest-e2e.json` | `test/*.e2e-spec.ts` — HTTP level via supertest | **1 suite, 12 tests** (~1 s) |
+
+`jest.config.js` sets `testPathIgnorePatterns: ['<rootDir>/test/']` so the exclusion of e2e specs from `npm test` is explicit, not an accident of `testRegex`.
+
+**Unit coverage:** `shares/` (share service, access validation, search/sort pipeline, integration), `files/` (download authorization for owner/admin/share/no-grant, integrity check), `certificates/` (serial lookup, normalized-serial schema hook), `devices/` (session teardown on revoke/block), `queue/` (cleanup dry-run, audit-before-delete ordering, limits), `setup/` (`generate-certificate` via supertest), `auth/` (login incl. all four failure branches, refresh rotation + re-use detection, logout, `JwtStrategy` type + blacklist checks, `JwtAuthGuard` public bypass, `RolesGuard` exact match), `encryption/` (GCM round-trips, IV freshness, tamper rejection, DEK wrap layout, and `rotateKey` **not** re-wrapping existing DEKs), `shared/logger`.
+
+**e2e coverage** (`test/health.e2e-spec.ts`): global `api/v1` prefix, the `TransformInterceptor` envelope, `JwtAuthGuard` deny-by-default on an undecorated route vs. `@Public()`, and `JwtStrategy` rejecting refresh-type, blacklisted, wrong-secret and expired tokens at the HTTP boundary. Mongo/Redis/Vault are stubbed, so it needs no Docker.
+
+**Still zero tests:** storage (including the `LocalStorageProvider` path-traversal guard), users (account lockout), admin (self-protection rules in `validateRoleChange`), `CertificateUtil`, and `SetupService` enrollment.
+
+**No test runs against real infrastructure.** The `$facet` share-search pipeline, the normalized-serial backfill and the cleanup purge were each verified manually against a throwaway `mongo:7` container. Formalising that needs a decision between `mongodb-memory-server` (fast, not a real server) and Testcontainers (real Mongo/Redis, needs Docker in CI). Vault is the awkward case: with `VAULT_ENABLED=false` the fallback paths mean tests can pass for the wrong reason.
 
 ### 10.5 Security items worth a dedicated pass
 
